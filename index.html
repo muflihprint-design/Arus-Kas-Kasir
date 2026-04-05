@@ -160,10 +160,29 @@ display: block !important;
         <i data-lucide="repeat" class="text-blue-600 mb-1"></i>
         <span class="text-xs font-semibold">Transfer</span>
       </button>
-      <button onclick="openModal('piutang')" class="p-3 bg-white border rounded-lg flex flex-col items-center hover:bg-purple-50 shadow-sm transition">
-        <i data-lucide="hand-coins" class="text-purple-600 mb-1"></i>
-        <span class="text-xs font-semibold">Piutang</span>
-      </button>
+    <div class="relative group">
+        <button class="w-full p-3 bg-white border rounded-lg flex flex-col items-center hover:bg-indigo-50 shadow-sm transition">
+          <i data-lucide="arrow-up-down" class="text-indigo-600 mb-1"></i>
+          <span class="text-xs font-semibold flex items-center gap-1">
+            Utang-Piutang
+            <i data-lucide="chevron-down" class="w-2.5 h-2.5"></i>
+          </span>
+        </button>
+
+        <div class="absolute left-0 mt-1 w-44 bg-white border border-slate-100 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+          <div class="p-1.5">
+            <button onclick="openModal('piutang')" class="w-full flex items-center gap-3 px-3 py-2.5 text-[11px] font-bold text-blue-600 hover:bg-blue-50 rounded-lg transition">
+              <i data-lucide="trending-up" class="w-4 h-4"></i>
+              Daftar Piutang
+            </button>
+            
+            <button onclick="openModal('utang')" class="w-full flex items-center gap-3 px-3 py-2.5 text-[11px] font-bold text-red-600 hover:bg-red-50 rounded-lg transition border-t border-slate-50">
+              <i data-lucide="trending-down" class="w-4 h-4"></i>
+              Daftar Utang
+            </button>
+          </div>
+        </div>
+      </div>
       <button onclick="openModal('cancel_manager')" class="p-3 bg-white border rounded-lg flex flex-col items-center hover:bg-red-50 shadow-sm transition border-red-100">
     <i data-lucide="x-circle" class="text-red-600 mb-1"></i>
     <span class="text-xs font-semibold text-red-600">Cancel</span>
@@ -246,7 +265,7 @@ display: block !important;
     let currentView = 'Semua'; 
     let currentCategory = 'SEMUA'; // State baru
     let masterBarang = ["Kertas A4", "Tinta Hitam", "Jilid Hardcover", "Banner Flexy", "Stiker Vinyl", "Cetak Foto", "Fotocopy"];
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzcAfXQ-Ri-87CtvCpI-ojhZHBhhiJpzHw13Gl7btbFK8d6Mlr3nBBiENqCJ1JaSXfVkA/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwbv0tM9CXPNss2GP9c8CDnExmrTeFJxbAraj9QJDx3AgZai2NR9JAcMVBZjOZo6wRcnA/exec";
 
     /** INISIALISASI **/
  window.onload = () => {
@@ -1153,6 +1172,26 @@ function renderTransactions() {
         <button onclick="saveTransfer()" class="w-full bg-blue-600 text-white p-4 rounded-xl font-bold hover:bg-blue-700 transition">Proses Mutasi</button>
       </div>
     `;
+  } else if (type === 'utang') {
+    // Tampilan Loading
+    content.innerHTML = `
+      <div class="p-10 text-center">
+        <div class="loader ease-linear rounded-full border-4 border-t-4 border-slate-200 h-12 w-12 mx-auto mb-4" style="border-top-color: #ef4444;"></div>
+        <p class="text-slate-500 font-medium">Mengambil daftar utang supplier...</p>
+      </div>`;
+    
+    // Mengambil data dari Apps Script dengan parameter action khusus
+    fetch(`${WEB_APP_URL}?action=getActivePayables`)
+      .then(response => response.json())
+      .then(list => {
+        // Render daftar utang ke dalam modal
+        renderUtangModal(list, content);
+        lucide.createIcons(); // Render ulang icon
+      })
+      .catch(err => {
+        console.error("Gagal mengambil data utang:", err);
+        content.innerHTML = `<div class="p-10 text-center text-red-500 font-bold">Gagal terhubung ke server. Pastikan Sheet "Utang" sudah ada.</div>`;
+      });
   } else if (type === 'piutang') {
     // Tampilan Loading
     content.innerHTML = `
@@ -1206,7 +1245,53 @@ function renderTransactions() {
   lucide.createIcons();
 }
 
+function renderUtangModal(list, container) {
+  // Filter hanya yang statusnya "Utang"
+  const activeUtang = list.filter(item => item.Status === "Utang");
 
+  if (activeUtang.length === 0) {
+    container.innerHTML = `
+      <div class="p-10 text-center">
+        <i data-lucide="shield-check" class="w-12 h-12 text-green-500 mx-auto mb-3"></i>
+        <h3 class="font-bold text-slate-800">Semua Utang Lunas</h3>
+        <p class="text-xs text-slate-500">Tidak ada tagihan supplier yang tertunda.</p>
+      </div>`;
+    return;
+  }
+
+  let html = `
+    <h2 class="text-xl font-bold mb-4 flex items-center gap-2 text-red-600">
+      <i data-lucide="trending-down"></i> Daftar Utang Supplier
+    </h2>
+    <div class="space-y-3 max-h-[450px] overflow-y-auto pr-1">
+  `;
+
+  activeUtang.forEach(item => {
+    html += `
+      <div class="bg-white border border-red-100 rounded-xl p-4 shadow-sm">
+        <div class="flex justify-between items-start mb-3">
+          <div>
+            <p class="text-[10px] font-bold text-slate-400 uppercase">${item.ID_Pembelian}</p>
+            <h3 class="font-bold text-slate-800">${item.Supplier}</h3>
+            <p class="text-[10px] text-slate-500">${item.Waktu}</p>
+          </div>
+          <div class="text-right">
+            <p class="text-[10px] font-bold text-slate-400 uppercase text-right">Sisa Utang</p>
+            <p class="text-lg font-bold text-red-600">Rp ${Number(item.Sisa_Utang).toLocaleString('id-ID')}</p>
+          </div>
+        </div>
+        <button onclick="bayarUtang('${item.ID_Pembelian}', ${item.Sisa_Utang})" 
+                class="w-full py-2.5 bg-red-50 text-red-600 rounded-lg font-bold text-xs hover:bg-red-600 hover:text-white transition flex items-center justify-center gap-2">
+          <i data-lucide="banknote" class="w-4 h-4"></i> Pelunasan Utang
+        </button>
+      </div>
+    `;
+  });
+
+  html += `</div>`;
+  container.innerHTML = html;
+}
+    
 
     function renderPiutangModal(list, content) {
       if (!list || list.length === 0) {
@@ -1534,6 +1619,70 @@ async function saveOperasional() {
       runScript('processTransaction', payload);
     }
 
+function bayarUtang(idUtang, sisaLama) {
+  const content = document.getElementById('modalContent');
+  
+  // Render Form Konfirmasi Pelunasan
+  content.innerHTML = `
+    <div class="p-2">
+      <h2 class="text-xl font-bold text-red-600 mb-2 flex items-center gap-2">
+        <i data-lucide="check-circle"></i> Konfirmasi Pelunasan
+      </h2>
+      <p class="text-sm text-slate-500 mb-6">Apakah Anda yakin ingin melunasi utang berikut?</p>
+      
+      <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6">
+        <div class="flex justify-between mb-2">
+          <span class="text-xs text-slate-400">ID Transaksi:</span>
+          <span class="text-xs font-bold text-slate-600">${idUtang}</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="font-medium text-slate-700">Total Pelunasan:</span>
+          <span class="text-xl font-black text-red-600">${formatRupiah(sisaLama)}</span>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Metode Pembayaran</label>
+          <select id="pay_utang_metode" class="w-full p-3 border-2 border-slate-200 rounded-xl font-bold focus:border-red-500 outline-none bg-white">
+            <option value="Cash">Cash (Tunai)</option>
+            <option value="Rekening">Transfer Rekening</option>
+          </select>
+        </div>
+
+        <div class="flex gap-3 pt-2">
+          <button onclick="renderUtangList()" class="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">
+            Batal
+          </button>
+          <button onclick="eksekusiPelunasanUtang('${idUtang}', ${sisaLama})" class="flex-[2] py-3 bg-red-600 text-white font-bold rounded-xl shadow-lg shadow-red-100 hover:bg-red-700 transition">
+            Ya, Lunasi Sekarang
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  lucide.createIcons();
+}
+
+// Fungsi Eksekusi Akhir
+function eksekusiPelunasanUtang(idUtang, nominal) {
+  const metode = document.getElementById('pay_utang_metode').value;
+  
+  const payload = {
+    type: 'BAYAR_UTANG',
+    idUtang: idUtang,
+    nominal: nominal, // Otomatis sisa utang
+    metode: metode
+  };
+
+  if (typeof showListLoading === 'function') showListLoading();
+  closeModal(); 
+
+  // Kirim ke Apps Script
+  runScript('processTransaction', payload);
+}
+
+  
     function saveBayarPiutang() {
       const id = document.getElementById('pi_id').value;
       const nominal = unmask(document.getElementById('pi_nom').value);
