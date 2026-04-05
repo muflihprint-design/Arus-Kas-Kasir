@@ -704,10 +704,18 @@ function renderCancelList() {
 }
 
 /** PROSES EKSEKUSI PEMBATALAN DENGAN KATEGORI SPESIFIK **/
+
 async function confirmCancel(id) {
   // Cari data transaksi berdasarkan ID
   const tx = currentTransactions.find(t => t.id === id);
   if (!tx) return;
+
+  // 1. Validasi Password sebelum lanjut
+  const password = prompt("Masukkan Password Otoritas untuk membatalkan transaksi:");
+  if (password !== "f@th1y4H") {
+    if (password !== null) alert("Password Salah! Anda tidak memiliki akses.");
+    return;
+  }
 
   let kategoriBaru = "";
   const katAsal = tx.kat.toUpperCase().trim();
@@ -722,17 +730,16 @@ async function confirmCancel(id) {
     kategoriBaru = "CANCEL " + katAsal;
   }
 
-  const pesan = `Apakah Anda yakin ingin MEMBATALKAN transaksi ini?\n\n` +
+  const pesan = `Konfirmasi Pembatalan:\n` +
                 `Keterangan: ${tx.ket}\n` +
-                `Kategori akan diubah menjadi: ${kategoriBaru}\n\n` +
-                `Catatan: Stok akan dikembalikan otomatis, namun saldo TIDAK berubah. ` +
-                `Input manual pengembalian dana di menu Operasional jika diperlukan.`;
+                `Kategori Baru: ${kategoriBaru}\n\n` +
+                `Lanjutkan pembatalan?`;
 
   if (!confirm(pesan)) return;
 
-  if (typeof showLoading === "function") showLoading();
-
-  // --- MULAI PROSES FETCH KE GITHUB ---
+  // 2. Langsung tutup modal dan berikan efek loading pada daftar
+  if (typeof closeModal === "function") closeModal();
+  if (typeof showListLoading === "function") showListLoading();
 
   try {
     const payload = {
@@ -741,31 +748,28 @@ async function confirmCancel(id) {
       newCategory: kategoriBaru
     };
 
+    // 3. Kirim data di latar belakang
     await fetch(WEB_APP_URL, {
       method: "POST",
-      mode: "no-cors", // Agar tidak terblokir kebijakan CORS
+      mode: "no-cors",
       cache: "no-cache",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
 
-    // Beri jeda agar server selesai memproses update stok & kategori
+    // 4. Segarkan data secara otomatis (tanpa alert sukses)
     setTimeout(() => {
-      alert("Transaksi berhasil dibatalkan sebagai " + kategoriBaru + ". Stok telah diperbarui.");
-      closeModal();
-      if (typeof hideLoading === "function") hideLoading();
-       showListLoading();
-      refreshData(); // Ambil data terbaru dari spreadsheet
+      if (typeof refreshData === "function") refreshData(); 
     }, 1500);
 
   } catch (err) {
-    hideListLoading();
+    // 5. Jika gagal, buka kunci list dan beri peringatan
+    if (typeof hideListLoading === "function") hideListLoading();
     console.error("Error Cancel:", err);
-    if (typeof hideLoading === "function") hideLoading();
     alert("Gagal membatalkan transaksi: Terjadi kesalahan koneksi.");
   }
 }
-
+    
  /** FUNGSI SEARCH BOX KUSTOM **/
    function handleSearchInput(inputEl, boxId) {
       const query = inputEl.value.toLowerCase();
