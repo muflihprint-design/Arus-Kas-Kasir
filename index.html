@@ -222,7 +222,7 @@ display: block !important;
     let currentView = 'Semua'; 
     let currentCategory = 'SEMUA'; // State baru
     let masterBarang = ["Kertas A4", "Tinta Hitam", "Jilid Hardcover", "Banner Flexy", "Stiker Vinyl", "Cetak Foto", "Fotocopy"];
-
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwsR0PTrogQGZWUAEHXshvIzkxmpU1i3SdrBjRXZ1Y37XkAMCN4RDKmgGZmU6ABRal2BQ/exec";
 
     /** INISIALISASI **/
  window.onload = () => {
@@ -254,17 +254,20 @@ display: block !important;
 };
 
       /** FUNGSI AMBIL DATA BARANG DARI SERVER **/
-    function fetchMasterBarang() {
-      if (typeof google !== 'undefined' && google.script && google.script.run) {
-        google.script.run.withSuccessHandler(res => {
-          masterBarang = res || [];
-          console.log("Master barang diperbarui:", masterBarang.length, "item");
-        }).getStockNames();
-      } else {
-        // Mock data untuk lokal
-        masterBarang = ["Kertas A4", "Tinta Epson 003", "Stiker Chromo", "Banner 280gr", "Jilid Spiral", "Laminating Panas", "Fotocopy"];
-      }
-    }
+   function fetchMasterBarang() {
+  // Menambahkan parameter ?action=getStockNames agar Apps Script tahu apa yang harus diambil
+  fetch(`${WEB_APP_URL}?action=getStockNames`)
+    .then(response => response.json())
+    .then(res => {
+      masterBarang = res || [];
+      console.log("Master barang berhasil dimuat:", masterBarang.length);
+    })
+    .catch(err => {
+      console.error("Error GitHub-to-GS:", err);
+      // Data sementara jika koneksi gagal
+      masterBarang = ["Kertas A4", "Tinta Epson 003"];
+    });
+}
 
   /** MODAL DETAIL TRANSAKSI DENGAN LOGIKA DISKON **/
   function showDetail(t) {
@@ -658,14 +661,12 @@ function renderCancelList() {
 }
 
 /** PROSES EKSEKUSI PEMBATALAN DENGAN KATEGORI SPESIFIK **/
-function confirmCancel(id) {
+async function confirmCancel(id) {
   // Cari data transaksi berdasarkan ID
   const tx = currentTransactions.find(t => t.id === id);
   if (!tx) return;
 
-  // Tentukan kategori baru berdasarkan kategori asal
   let kategoriBaru = "";
-  // Gunakan toUpperCase untuk keamanan pengecekan
   const katAsal = tx.kat.toUpperCase().trim();
 
   if (katAsal === 'PENJUALAN') {
@@ -675,11 +676,9 @@ function confirmCancel(id) {
   } else if (katAsal === 'OPERASIONAL') {
     kategoriBaru = "CANCEL BIAYA";
   } else {
-    kategoriBaru = "CANCEL " + katAsal; // Fallback jika ada kategori lain
+    kategoriBaru = "CANCEL " + katAsal;
   }
 
-  // Pesan konfirmasi disesuaikan: Tanpa kalimat "saldo otomatis disesuaikan"
-  // Karena refund dilakukan manual di operasional.
   const pesan = `Apakah Anda yakin ingin MEMBATALKAN transaksi ini?\n\n` +
                 `Keterangan: ${tx.ket}\n` +
                 `Kategori akan diubah menjadi: ${kategoriBaru}\n\n` +
@@ -688,31 +687,38 @@ function confirmCancel(id) {
 
   if (!confirm(pesan)) return;
 
-  // Tampilkan loading (fungsi showLoading harus sudah ada di index.html Anda)
   if (typeof showLoading === "function") showLoading();
 
-  if (typeof google !== 'undefined' && google.script && google.script.run) {
-    // Kirim ID dan Kategori Baru ke backend (Code.gs)
-    google.script.run.withSuccessHandler(() => {
+  // --- MULAI PROSES FETCH KE GITHUB ---
+  try {
+    const payload = {
+      action: "processCancelOrder",
+      transactionId: id,
+      newCategory: kategoriBaru
+    };
+
+    await fetch(WEB_APP_URL, {
+      method: "POST",
+      mode: "no-cors", // Agar tidak terblokir kebijakan CORS
+      cache: "no-cache",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    // Beri jeda agar server selesai memproses update stok & kategori
+    setTimeout(() => {
       alert("Transaksi berhasil dibatalkan sebagai " + kategoriBaru + ". Stok telah diperbarui.");
       closeModal();
-      refreshData();
-    }).withFailureHandler((err) => {
-      alert("Gagal membatalkan transaksi: " + err);
-    }).processCancelOrder(id, kategoriBaru); 
-  } else {
-    // Mode Simulasi Lokal (Untuk testing di browser tanpa Apps Script)
-    setTimeout(() => {
-      const idx = currentTransactions.findIndex(t => t.id === id);
-      if(idx !== -1) currentTransactions[idx].kat = kategoriBaru;
-      alert("Berhasil dicancel sebagai " + kategoriBaru + " (Mode Simulasi)");
-      closeModal();
-      if (typeof refreshData === "function") refreshData();
-    }, 1000);
+      if (typeof hideLoading === "function") hideLoading();
+      refreshData(); // Ambil data terbaru dari spreadsheet
+    }, 1500);
+
+  } catch (err) {
+    console.error("Error Cancel:", err);
+    if (typeof hideLoading === "function") hideLoading();
+    alert("Gagal membatalkan transaksi: Terjadi kesalahan koneksi.");
   }
 }
-
-
 
  /** FUNGSI SEARCH BOX KUSTOM **/
    function handleSearchInput(inputEl, boxId) {
@@ -754,32 +760,35 @@ function confirmCancel(id) {
     });
 
     /** FUNGSI REFRESH DATA DARI SERVER **/
-    function refreshData() {
-      // Ambil Saldo
-      if (typeof google !== 'undefined' && google.script && google.script.run) {
-        google.script.run.withSuccessHandler(res => {
-          document.getElementById('cashBal').innerText = formatRupiah(res.cash);
-          document.getElementById('bankBal').innerText = formatRupiah(res.bank);
-        }).getBalances();
+   async function refreshData() {
+  const loadingElement = document.getElementById('loadingSpinner'); // Jika ada spinner
+  if (loadingElement) loadingElement.classList.remove('hidden');
 
-        // Ambil Transaksi
-        google.script.run.withSuccessHandler(res => {
-          currentTransactions = res;
-          renderTransactions();
-        }).getTransactions();
-      } else {
-        // Fallback untuk pratinjau lokal/Canvas
-        console.warn("Google Apps Script environment not detected. Using mock data.");
-        document.getElementById('cashBal').innerText = formatRupiah(1500000);
-        document.getElementById('bankBal').innerText = formatRupiah(5000000);
-        
-        currentTransactions = [
-          {id: 'T1', waktu: new Date().toISOString().split('T')[0] + ' 10:00', ket: 'Penjualan Kopi', kat: 'PENJUALAN', sub: 'Budi', tipe: 'MASUK', masuk: 50000, keluar: 0, metode: 'Cash'},
-          {id: 'T2', waktu: new Date().toISOString().split('T')[0] + ' 11:30', ket: 'Bayar Listrik', kat: 'OPERASIONAL', sub: '-', tipe: 'KELUAR', masuk: 0, keluar: 200000, metode: 'Rekening'}
-        ];
-        renderTransactions();
-      }
-    }
+  try {
+    // 1. Ambil Saldo (Balances)
+    const resBal = await fetch(`${WEB_APP_URL}?action=getBalances`);
+    const balances = await resBal.json();
+    
+    document.getElementById('cashBal').innerText = formatRupiah(balances.cash);
+    document.getElementById('bankBal').innerText = formatRupiah(balances.bank);
+
+    // 2. Ambil Transaksi (Transactions)
+    const resTrans = await fetch(`${WEB_APP_URL}?action=getTransactions`);
+    const transactions = await resTrans.json();
+    
+    currentTransactions = transactions;
+    renderTransactions();
+
+    console.log("Data berhasil diperbarui dari server.");
+  } catch (err) {
+    console.error("Gagal refresh data:", err);
+    // Fallback data jika server gagal diakses
+    document.getElementById('cashBal').innerText = formatRupiah(0);
+    document.getElementById('bankBal').innerText = formatRupiah(0);
+  } finally {
+    if (loadingElement) loadingElement.classList.add('hidden');
+  }
+}
 
  /** LOGIKA FILTER KATEGORI BARU **/
     function setCategory(cat) {
@@ -955,184 +964,184 @@ function renderTransactions() {
     }
 
     /** MODAL CONTROL **/
-    function openModal(type) {
-      const overlay = document.getElementById('modalOverlay');
-      const content = document.getElementById('modalContent');
-      overlay.classList.remove('hidden');
-      
-      if (type === 'penjualan') {
-        content.innerHTML = `
-          <h2 class="text-xl font-bold mb-4 flex items-center gap-2"><i data-lucide="shopping-cart"></i> Penjualan Baru</h2>
-          <div class="space-y-4">
-            <div class="grid grid-cols-1 gap-2">
-              <label class="text-xs font-bold text-gray-500 uppercase">Pelanggan</label>
-              <input id="p_cust" type="text" placeholder="Nama Pelanggan" class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-blue-100 outline-none">
-            </div>
-            
-            <div class="bg-slate-50 p-4 rounded-xl border border-dashed border-slate-300">
-              <p class="text-xs font-bold mb-3 text-slate-500 uppercase">Daftar Barang</p>
-              <div id="itemContainer" class="space-y-2 mb-3"></div>
-              <button onclick="addItem()" class="w-full py-2 bg-white border border-blue-200 text-blue-600 text-xs font-bold rounded-lg hover:bg-blue-50 transition flex items-center justify-center gap-1">
-                <i data-lucide="plus" class="w-3"></i> Tambah Item
-              </button>
-            </div>
+  function openModal(type) {
+  const overlay = document.getElementById('modalOverlay');
+  const content = document.getElementById('modalContent');
+  overlay.classList.remove('hidden');
+  
+  if (type === 'penjualan') {
+    content.innerHTML = `
+      <h2 class="text-xl font-bold mb-4 flex items-center gap-2"><i data-lucide="shopping-cart"></i> Penjualan Baru</h2>
+      <div class="space-y-4">
+        <div class="grid grid-cols-1 gap-2">
+          <label class="text-xs font-bold text-gray-500 uppercase">Pelanggan</label>
+          <input id="p_cust" type="text" placeholder="Nama Pelanggan" class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-blue-100 outline-none">
+        </div>
+        
+        <div class="bg-slate-50 p-4 rounded-xl border border-dashed border-slate-300">
+          <p class="text-xs font-bold mb-3 text-slate-500 uppercase">Daftar Barang</p>
+          <div id="itemContainer" class="space-y-2 mb-3"></div>
+          <button onclick="addItem()" class="w-full py-2 bg-white border border-blue-200 text-blue-600 text-xs font-bold rounded-lg hover:bg-blue-50 transition flex items-center justify-center gap-1">
+            <i data-lucide="plus" class="w-3"></i> Tambah Item
+          </button>
+        </div>
 
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="text-[10px] font-bold text-gray-400 uppercase">Diskon (Rp)</label>
-                <input id="p_disc" type="text" inputmode="numeric" oninput="maskNominal(this); calcTotal()" placeholder="0" class="w-full p-2.5 border rounded-lg accounting">
-              </div>
-              <div>
-                <label class="text-[10px] font-bold text-gray-400 uppercase">Metode</label>
-                <select id="p_metode" class="w-full p-2.5 border rounded-lg bg-white">
-                  <option value="Cash">Cash</option>
-                  <option value="Rekening">Rekening</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="bg-blue-50 p-4 rounded-xl border border-blue-100">
-              <div class="flex justify-between items-center mb-1">
-                <span class="text-sm font-medium text-blue-800">Total Tagihan:</span>
-                <span id="p_total_raw" class="text-sm font-bold text-blue-800">Rp 0</span>
-              </div>
-              <div class="flex justify-between items-center text-blue-900 border-t border-blue-200 mt-2 pt-2">
-                <span class="text-base font-bold">Total Akhir:</span>
-                <span id="p_final" class="text-xl font-bold">Rp 0</span>
-              </div>
-            </div>
-
-            <div class="pt-2">
-              <label class="text-xs font-bold text-gray-500 uppercase block mb-1">DP / Pembayaran Sekarang</label>
-              <input id="p_dp" type="text" inputmode="numeric" oninput="maskNominal(this); calcTotal()" placeholder="Masukkan nominal bayar" class="w-full p-3 border-2 border-green-500 rounded-lg text-lg font-bold text-green-700 focus:ring-4 focus:ring-green-100 outline-none">
-              <p id="p_status_piutang" class="text-[10px] mt-1 text-slate-500 italic"></p>
-            </div>
-
-            <button onclick="savePenjualan()" class="w-full bg-green-600 text-white p-4 rounded-xl font-bold shadow-lg shadow-green-100 hover:bg-green-700 transition">Proses Transaksi</button>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-[10px] font-bold text-gray-400 uppercase">Diskon (Rp)</label>
+            <input id="p_disc" type="text" inputmode="numeric" oninput="maskNominal(this); calcTotal()" placeholder="0" class="w-full p-2.5 border rounded-lg accounting">
           </div>
-        `;
-        addItem();
-      } else if (type === 'pembelian') {
-        content.innerHTML = `
-          <h2 class="text-xl font-bold mb-4 flex items-center gap-2"><i data-lucide="truck"></i> Pembelian Barang</h2>
-          <div class="space-y-4">
-            <input id="b_supp" type="text" placeholder="Nama Supplier" class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-blue-100 outline-none">
-            
-            <div class="bg-slate-50 p-4 rounded-xl border border-dashed border-slate-300">
-              <p class="text-xs font-bold mb-3 text-slate-500 uppercase">Daftar Belanja</p>
-              <div id="itemContainer" class="space-y-2 mb-3"></div>
-              <button onclick="addItem()" class="w-full py-2 bg-white border border-red-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-50 transition flex items-center justify-center gap-1">
-                <i data-lucide="plus" class="w-3"></i> Tambah Item
-              </button>
-            </div>
-
-            <select id="b_metode" class="w-full p-2.5 border rounded-lg bg-white">
+          <div>
+            <label class="text-[10px] font-bold text-gray-400 uppercase">Metode</label>
+            <select id="p_metode" class="w-full p-2.5 border rounded-lg bg-white">
               <option value="Cash">Cash</option>
               <option value="Rekening">Rekening</option>
             </select>
-
-            <div class="bg-red-50 p-4 rounded-xl border border-red-100 flex justify-between items-center">
-              <span class="font-bold text-red-800">Total Bayar:</span>
-              <span id="b_final" class="text-xl font-bold text-red-700">Rp 0</span>
-            </div>
-
-            <button onclick="savePembelian()" class="w-full bg-red-600 text-white p-4 rounded-xl font-bold shadow-lg shadow-red-100 hover:bg-red-700 transition">Simpan Pembelian</button>
           </div>
-        `;
-        addItem();
-      } else if (type === 'operasional') {
-  content.innerHTML = `
-    <h2 class="text-xl font-bold mb-4">Pengeluaran Operasional</h2>
-    <div class="space-y-4">
-      <div class="flex gap-2">
-        <select id="op_metode" class="flex-1 p-3 border rounded-lg bg-white font-medium">
-          <option value="Cash">Metode: Cash</option>
-          <option value="Rekening">Metode: Rekening</option>
-        </select>
-      </div>
-      
-      <div class="flex items-center gap-3 p-3 bg-red-50 border border-red-100 rounded-lg">
-        <input type="checkbox" id="is_refund" class="w-5 h-5 accent-red-600 cursor-pointer">
-        <label for="is_refund" class="text-sm font-bold text-red-700 cursor-pointer">Ini adalah Dana Refund (Pengembalian)</label>
-      </div>
+        </div>
 
-      <input id="op_nom" type="text" inputmode="numeric" oninput="maskNominal(this)" placeholder="Nominal (Rp)" class="w-full p-3 border rounded-lg accounting text-lg font-bold">
-      <textarea id="op_ket" placeholder="Keterangan pengeluaran..." class="w-full p-3 border rounded-lg h-24"></textarea>
-      
-      <button onclick="saveOperasional()" class="w-full bg-red-600 text-white p-4 rounded-xl font-bold hover:bg-red-700 transition">Simpan Pengeluaran</button>
-    </div>
-  `;
-} else if (type === 'transfer') {
-        content.innerHTML = `
-          <h2 class="text-xl font-bold mb-4">Pindah Saldo (Mutasi)</h2>
-          <div class="space-y-4">
-            <div class="grid grid-cols-2 gap-2 items-center">
-              <select id="t_dari" class="p-3 border rounded-lg bg-white font-medium" onchange="adjustTransferOptions()">
-                <option value="Cash">Dari: Cash</option>
-                <option value="Rekening">Dari: Rekening</option>
-              </select>
-              <div class="text-center text-gray-400"><i data-lucide="arrow-right"></i></div>
-              <select id="t_ke" class="p-3 border rounded-lg bg-white font-medium">
-                <option value="Rekening">Ke: Rekening</option>
-                <option value="Cash" disabled>Ke: Cash</option>
-              </select>
-            </div>
-            <input id="t_nom" type="text" inputmode="numeric" oninput="maskNominal(this)" placeholder="Nominal Mutasi (Rp)" class="w-full p-3 border rounded-lg accounting text-lg font-bold">
-            <button onclick="saveTransfer()" class="w-full bg-blue-600 text-white p-4 rounded-xl font-bold hover:bg-blue-700 transition">Proses Mutasi</button>
+        <div class="bg-blue-50 p-4 rounded-xl border border-blue-100">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-sm font-medium text-blue-800">Total Tagihan:</span>
+            <span id="p_total_raw" class="text-sm font-bold text-blue-800">Rp 0</span>
           </div>
-        `;
-      } 
-      else if (type === 'piutang') {
-        content.innerHTML = '<div class="p-10 text-center"><p class="loader ease-linear rounded-full border-2 border-t-2 border-gray-200 h-10 w-10 mx-auto mb-4"></p>Mengambil daftar piutang...</div>';
+          <div class="flex justify-between items-center text-blue-900 border-t border-blue-200 mt-2 pt-2">
+            <span class="text-base font-bold">Total Akhir:</span>
+            <span id="p_final" class="text-xl font-bold">Rp 0</span>
+          </div>
+        </div>
+
+        <div class="pt-2">
+          <label class="text-xs font-bold text-gray-500 uppercase block mb-1">DP / Pembayaran Sekarang</label>
+          <input id="p_dp" type="text" inputmode="numeric" oninput="maskNominal(this); calcTotal()" placeholder="Masukkan nominal bayar" class="w-full p-3 border-2 border-green-500 rounded-lg text-lg font-bold text-green-700 focus:ring-4 focus:ring-green-100 outline-none">
+          <p id="p_status_piutang" class="text-[10px] mt-1 text-slate-500 italic"></p>
+        </div>
+
+        <button onclick="savePenjualan()" class="w-full bg-green-600 text-white p-4 rounded-xl font-bold shadow-lg shadow-green-100 hover:bg-green-700 transition">Proses Transaksi</button>
+      </div>
+    `;
+    addItem();
+  } else if (type === 'pembelian') {
+    content.innerHTML = `
+      <h2 class="text-xl font-bold mb-4 flex items-center gap-2"><i data-lucide="truck"></i> Pembelian Barang</h2>
+      <div class="space-y-4">
+        <input id="b_supp" type="text" placeholder="Nama Supplier" class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-blue-100 outline-none">
         
-        if (typeof google !== 'undefined' && google.script && google.script.run) {
-          google.script.run.withSuccessHandler(list => {
-            renderPiutangModal(list, content);
-          }).getActiveReceivables();
-        } else {
-          // Mock data piutang
-          setTimeout(() => {
-            renderPiutangModal([
-              {id: 'P1', nama: 'Budi Ardiansyah', sisa: 500000},
-              {id: 'P2', nama: 'Siska Toko', sisa: 250000}
-            ], content);
-          }, 800);
-        }
-      } 
-      else if (type === 'cancel_manager') {
-        content.innerHTML = `
-          <div class="mb-5">
-            <h2 class="text-xl font-bold text-red-600 flex items-center gap-2">
-              <i data-lucide="trash-2"></i> Pembatalan Pesanan
-            </h2>
-            <p class="text-xs text-slate-500">Pilih transaksi yang ingin diubah statusnya.</p>
-          </div>
+        <div class="bg-slate-50 p-4 rounded-xl border border-dashed border-slate-300">
+          <p class="text-xs font-bold mb-3 text-slate-500 uppercase">Daftar Belanja</p>
+          <div id="itemContainer" class="space-y-2 mb-3"></div>
+          <button onclick="addItem()" class="w-full py-2 bg-white border border-red-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-50 transition flex items-center justify-center gap-1">
+            <i data-lucide="plus" class="w-3"></i> Tambah Item
+          </button>
+        </div>
 
-          <div class="flex gap-2 mb-4">
-            <select id="cnl_filter_kat" onchange="renderCancelList()" class="p-2 text-xs border rounded-lg bg-slate-50 font-bold outline-none">
-              <option value="PENJUALAN">PENJUALAN</option>
-              <option value="PEMBELIAN">PEMBELIAN</option>
-              <option value="OPERASIONAL">OPERASIONAL</option>
-            </select>
-            <div class="relative flex-1">
-              <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400"></i>
-              <input type="text" id="cnl_search" oninput="renderCancelList()" placeholder="Cari nama atau keterangan..." 
-                     class="w-full pl-9 pr-4 py-2 text-xs border rounded-lg outline-none focus:ring-2 focus:ring-red-100">
-            </div>
-          </div>
+        <select id="b_metode" class="w-full p-2.5 border rounded-lg bg-white">
+          <option value="Cash">Cash</option>
+          <option value="Rekening">Rekening</option>
+        </select>
 
-          <div id="cancelListContainer" class="divide-y border rounded-xl overflow-hidden max-h-[400px] overflow-y-auto bg-white">
-          </div>
-          
-          <button onclick="closeModal()" class="w-full mt-4 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl">Tutup</button>
-        `;
-        renderCancelList();
-      }
-      
-      // Baris ini harus selalu ada di paling bawah sebelum penutup fungsi
-      lucide.createIcons();
-    }
+        <div class="bg-red-50 p-4 rounded-xl border border-red-100 flex justify-between items-center">
+          <span class="font-bold text-red-800">Total Bayar:</span>
+          <span id="b_final" class="text-xl font-bold text-red-700">Rp 0</span>
+        </div>
+
+        <button onclick="savePembelian()" class="w-full bg-red-600 text-white p-4 rounded-xl font-bold shadow-lg shadow-red-100 hover:bg-red-700 transition">Simpan Pembelian</button>
+      </div>
+    `;
+    addItem();
+  } else if (type === 'operasional') {
+    content.innerHTML = `
+      <h2 class="text-xl font-bold mb-4">Pengeluaran Operasional</h2>
+      <div class="space-y-4">
+        <div class="flex gap-2">
+          <select id="op_metode" class="flex-1 p-3 border rounded-lg bg-white font-medium">
+            <option value="Cash">Metode: Cash</option>
+            <option value="Rekening">Metode: Rekening</option>
+          </select>
+        </div>
+        
+        <div class="flex items-center gap-3 p-3 bg-red-50 border border-red-100 rounded-lg">
+          <input type="checkbox" id="is_refund" class="w-5 h-5 accent-red-600 cursor-pointer">
+          <label for="is_refund" class="text-sm font-bold text-red-700 cursor-pointer">Ini adalah Dana Refund (Pengembalian)</label>
+        </div>
+
+        <input id="op_nom" type="text" inputmode="numeric" oninput="maskNominal(this)" placeholder="Nominal (Rp)" class="w-full p-3 border rounded-lg accounting text-lg font-bold">
+        <textarea id="op_ket" placeholder="Keterangan pengeluaran..." class="w-full p-3 border rounded-lg h-24"></textarea>
+        
+        <button onclick="saveOperasional()" class="w-full bg-red-600 text-white p-4 rounded-xl font-bold hover:bg-red-700 transition">Simpan Pengeluaran</button>
+      </div>
+    `;
+  } else if (type === 'transfer') {
+    content.innerHTML = `
+      <h2 class="text-xl font-bold mb-4">Pindah Saldo (Mutasi)</h2>
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-2 items-center">
+          <select id="t_dari" class="p-3 border rounded-lg bg-white font-medium" onchange="adjustTransferOptions()">
+            <option value="Cash">Dari: Cash</option>
+            <option value="Rekening">Dari: Rekening</option>
+          </select>
+          <div class="text-center text-gray-400"><i data-lucide="arrow-right"></i></div>
+          <select id="t_ke" class="p-3 border rounded-lg bg-white font-medium">
+            <option value="Rekening">Ke: Rekening</option>
+            <option value="Cash" disabled>Ke: Cash</option>
+          </select>
+        </div>
+        <input id="t_nom" type="text" inputmode="numeric" oninput="maskNominal(this)" placeholder="Nominal Mutasi (Rp)" class="w-full p-3 border rounded-lg accounting text-lg font-bold">
+        <button onclick="saveTransfer()" class="w-full bg-blue-600 text-white p-4 rounded-xl font-bold hover:bg-blue-700 transition">Proses Mutasi</button>
+      </div>
+    `;
+  } else if (type === 'piutang') {
+    // Tampilan Loading
+    content.innerHTML = `
+      <div class="p-10 text-center">
+        <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mx-auto mb-4" style="border-top-color: #3498db;"></div>
+        <p class="text-slate-500 font-medium">Mengambil daftar piutang dari server...</p>
+      </div>`;
     
+    // Perubahan utama: Menggunakan FETCH untuk GitHub
+    fetch(`${WEB_APP_URL}?action=getActiveReceivables`)
+      .then(response => response.json())
+      .then(list => {
+        renderPiutangModal(list, content);
+        lucide.createIcons(); // Re-render icon setelah list muncul
+      })
+      .catch(err => {
+        console.error("Gagal mengambil piutang:", err);
+        content.innerHTML = `<div class="p-10 text-center text-red-500 font-bold">Gagal terhubung ke server. Silakan coba lagi.</div>`;
+      });
+  } else if (type === 'cancel_manager') {
+    content.innerHTML = `
+      <div class="mb-5">
+        <h2 class="text-xl font-bold text-red-600 flex items-center gap-2">
+          <i data-lucide="trash-2"></i> Pembatalan Pesanan
+        </h2>
+        <p class="text-xs text-slate-500">Pilih transaksi yang ingin diubah statusnya.</p>
+      </div>
+
+      <div class="flex gap-2 mb-4">
+        <select id="cnl_filter_kat" onchange="renderCancelList()" class="p-2 text-xs border rounded-lg bg-slate-50 font-bold outline-none">
+          <option value="PENJUALAN">PENJUALAN</option>
+          <option value="PEMBELIAN">PEMBELIAN</option>
+          <option value="OPERASIONAL">OPERASIONAL</option>
+        </select>
+        <div class="relative flex-1">
+          <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400"></i>
+          <input type="text" id="cnl_search" oninput="renderCancelList()" placeholder="Cari nama atau keterangan..." 
+                 class="w-full pl-9 pr-4 py-2 text-xs border rounded-lg outline-none focus:ring-2 focus:ring-red-100">
+        </div>
+      </div>
+
+      <div id="cancelListContainer" class="divide-y border rounded-xl overflow-hidden max-h-[400px] overflow-y-auto bg-white">
+      </div>
+      
+      <button onclick="closeModal()" class="w-full mt-4 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl">Tutup</button>
+    `;
+    renderCancelList();
+  }
+  
+  // Render icon Lucide
+  lucide.createIcons();
+}
 
 
 
@@ -1314,21 +1323,39 @@ function unmask(val) {
         </div>`;
     }
 
-    function runScript(method, payload) {
-      if (typeof google !== 'undefined' && google.script && google.script.run) {
-        google.script.run.withSuccessHandler(() => { 
-          closeModal(); 
-          refreshData(); 
-        }).processTransaction(payload);
-      } else {
-        console.log("Mock Submit:", method, payload);
-        setTimeout(() => {
-          closeModal();
-          alert("Transaksi berhasil disimpan (Mode Simulasi)");
-          refreshData();
-        }, 1000);
-      }
-    }
+   async function runScript(method, payload) {
+  // Tampilkan loading/spinner jika ada
+  const btn = document.querySelector('button[onclick*="runScript"]');
+  if (btn) btn.disabled = true;
+
+  try {
+    const response = await fetch(WEB_APP_URL, {
+      method: "POST",
+      mode: "no-cors", // Penting agar tidak terblokir kebijakan CORS browser
+      cache: "no-cache",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload), // Mengirim data transaksi
+    });
+
+    // Karena menggunakan 'no-cors', kita tidak bisa membaca respon JSON secara detail,
+    // tapi kita bisa mengasumsikan sukses jika tidak ada error network.
+    console.log("Transaksi dikirim ke server");
+    
+    setTimeout(() => {
+      closeModal();
+      refreshData(); // Memperbarui tampilan saldo & tabel
+      alert("Transaksi Berhasil Diproses");
+    }, 1500);
+
+  } catch (err) {
+    console.error("Gagal mengirim transaksi:", err);
+    alert("Terjadi kesalahan koneksi ke server.");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
 
     function savePenjualan() {
       const items = collectItems();
@@ -1364,17 +1391,17 @@ function unmask(val) {
       runScript('processTransaction', payload);
     }
 
-    function saveOperasional() {
+ async function saveOperasional() {
   // 1. Ambil elemen-elemen input
   const elNom = document.getElementById('op_nom');
   const elKet = document.getElementById('op_ket');
   const elMetode = document.getElementById('op_metode');
-  const elRefund = document.getElementById('is_refund'); // Checkbox baru
+  const elRefund = document.getElementById('is_refund');
 
-  // 2. Validasi: Pastikan elemen ada di DOM
+  // 2. Validasi elemen
   if (!elNom || !elKet) return;
 
-  // 3. Ambil nilai dan bersihkan format rupiah menggunakan parseRaw
+  // 3. Ambil nilai dan bersihkan format
   const nominal = unmask(elNom.value);
   const keterangan = elKet.value.trim();
   const metode = elMetode ? elMetode.value : "Cash";
@@ -1386,40 +1413,46 @@ function unmask(val) {
     return;
   }
 
-  // 5. Susun Payload untuk dikirim ke Code.gs
+  // 5. Susun Payload
   const payload = {
+    // Tambahkan properti action agar doPost di Apps Script tahu apa yang harus dilakukan
+    action: "saveOperasional", 
     type: isRefund ? "PENGEMBALIAN_DANA" : "OPERASIONAL",
     nominal: nominal,
-    // Jika refund, tambahkan prefix di keterangan agar mudah dibaca di sheet
     keterangan: isRefund ? "[REFUND] " + keterangan : keterangan,
     metode: metode
   };
 
   showLoading();
 
-  if (typeof google !== 'undefined' && google.script && google.script.run) {
-    google.script.run
-      .withSuccessHandler(() => {
-        alert(isRefund ? "Dana Refund berhasil dicatat!" : "Pengeluaran operasional berhasil disimpan.");
-        closeModal();
-        refreshData();
-      })
-      .withFailureHandler((err) => {
-        hideLoading();
-        alert("Gagal menyimpan: " + err);
-      })
-      .processTransaction(payload);
-  } else {
-    // Mode simulasi untuk testing lokal di browser
-    console.log("Payload yang dikirim:", payload);
+  try {
+    // 6. Kirim data ke Google Apps Script menggunakan fetch
+    await fetch(WEB_APP_URL, {
+      method: "POST",
+      mode: "no-cors", // Wajib untuk menghindari blokir CORS di GitHub Pages
+      cache: "no-cache",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    // Karena menggunakan no-cors, kita beri jeda agar server selesai memproses
     setTimeout(() => {
-      alert("Berhasil disimpan (Mode Simulasi)");
+      alert(isRefund ? "Dana Refund berhasil dicatat!" : "Pengeluaran operasional berhasil disimpan.");
       closeModal();
       hideLoading();
-    }, 1000);
+      refreshData(); // Perbarui tampilan saldo dan tabel
+    }, 1500);
+
+  } catch (err) {
+    hideLoading();
+    console.error("Kesalahan koneksi:", err);
+    alert("Gagal menyimpan: Terjadi kesalahan koneksi ke server.");
   }
 }
 
+    
     function saveTransfer() {
         const nominal = unmask(document.getElementById('t_nom').value);
       if(!nominal) return;
@@ -1451,44 +1484,48 @@ function unmask(val) {
 
 
 /** FUNGSI UNTUK MENGIRIM PERUBAHAN NAMA KE SERVER **/
-function updateSub(transactionId) {
+async function updateSub(transactionId) {
   const newSub = document.getElementById('edit_sub_input').value.trim() || '-';
   
-  // Tampilkan loading kecil pada tombol jika perlu
+  // Animasi Loading pada tombol
   const btn = event.currentTarget;
   const originalHtml = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<i class="loader w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></i>';
 
-  if (typeof google !== 'undefined' && google.script && google.script.run) {
-    google.script.run.withSuccessHandler(() => {
-      btn.disabled = false;
-      btn.innerHTML = originalHtml;
-      
-      // Notifikasi sukses (bisa diganti dengan toast UI)
-      alert("Nama berhasil diperbarui!");
-      
-      // Tutup modal dan refresh data agar tampilan list berubah
-      closeModal();
-      refreshData();
-    }).updateTransactionSub(transactionId, newSub); // Pastikan fungsi ini ada di Google Apps Script (Code.gs)
-  } else {
-    // Simulasi jika dijalankan lokal
+  try {
+    // Menyiapkan data yang akan dikirim
+    const payload = {
+      action: "updateTransactionSub",
+      transactionId: transactionId,
+      newSub: newSub
+    };
+
+    await fetch(WEB_APP_URL, {
+      method: "POST",
+      mode: "no-cors", // Agar tidak terblokir kebijakan CORS browser
+      cache: "no-cache",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    // Karena menggunakan no-cors, kita beri jeda sedikit agar server selesai memproses
     setTimeout(() => {
-      console.log("Mock Update:", transactionId, newSub);
       btn.disabled = false;
       btn.innerHTML = originalHtml;
-      alert("Berhasil diperbarui (Mode Simulasi)");
+      alert("Nama berhasil diperbarui!");
       closeModal();
-      
-      // Update data lokal untuk simulasi
-      const index = currentTransactions.findIndex(tx => tx.id === transactionId);
-      if(index !== -1) currentTransactions[index].sub = newSub;
-      renderTransactions();
-    }, 800);
+      refreshData(); // Mengambil data terbaru dari Google Sheets
+    }, 1200);
+
+  } catch (err) {
+    console.error("Gagal update sub:", err);
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+    alert("Terjadi kesalahan koneksi.");
   }
 }
-
+    
 function downloadExcel() {
     const ds = document.getElementById('f-date-start').value;
     const de = document.getElementById('f-date-end').value;
