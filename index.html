@@ -733,7 +733,7 @@ async function confirmCancel(id) {
   if (typeof showLoading === "function") showLoading();
 
   // --- MULAI PROSES FETCH KE GITHUB ---
-  showListLoading();
+
   try {
     const payload = {
       action: "processCancelOrder",
@@ -754,10 +754,12 @@ async function confirmCancel(id) {
       alert("Transaksi berhasil dibatalkan sebagai " + kategoriBaru + ". Stok telah diperbarui.");
       closeModal();
       if (typeof hideLoading === "function") hideLoading();
+       showListLoading();
       refreshData(); // Ambil data terbaru dari spreadsheet
     }, 1500);
 
   } catch (err) {
+    hideListLoading();
     console.error("Error Cancel:", err);
     if (typeof hideLoading === "function") hideLoading();
     alert("Gagal membatalkan transaksi: Terjadi kesalahan koneksi.");
@@ -1390,11 +1392,13 @@ function unmask(val) {
     
     setTimeout(() => {
       closeModal();
+        showListLoading();
       refreshData(); // Memperbarui tampilan saldo & tabel
       alert("Transaksi Berhasil Diproses");
     }, 1500);
 
   } catch (err) {
+    hideListLoading();
     console.error("Gagal mengirim transaksi:", err);
     alert("Terjadi kesalahan koneksi ke server.");
   } finally {
@@ -1405,7 +1409,7 @@ function unmask(val) {
     function savePenjualan() {
       const items = collectItems();
       if(items.length === 0) return;
-      showListLoading();
+   
       const payload = {
         type: 'PENJUALAN',
         pelanggan: document.getElementById('p_cust').value || 'Umum',
@@ -1423,7 +1427,7 @@ function unmask(val) {
     function savePembelian() {
       const items = collectItems();
       if(items.length === 0) return;
-      showListLoading();
+  
       const payload = {
         type: 'PEMBELIAN',
         supplier: document.getElementById('b_supp').value || '-',
@@ -1459,7 +1463,7 @@ function unmask(val) {
   }
 
   // 5. Susun Payload
-   showListLoading();
+  
   const payload = {
     // Tambahkan properti action agar doPost di Apps Script tahu apa yang harus dilakukan
     action: "saveOperasional", 
@@ -1469,7 +1473,7 @@ function unmask(val) {
     metode: metode
   };
 
-  showLoading();
+   showLoading();
 
   try {
     // 6. Kirim data ke Google Apps Script menggunakan fetch
@@ -1488,6 +1492,7 @@ function unmask(val) {
       alert(isRefund ? "Dana Refund berhasil dicatat!" : "Pengeluaran operasional berhasil disimpan.");
       closeModal();
       hideLoading();
+       showListLoading();
       refreshData(); // Perbarui tampilan saldo dan tabel
     }, 1500);
 
@@ -1502,7 +1507,7 @@ function unmask(val) {
     function saveTransfer() {
         const nominal = unmask(document.getElementById('t_nom').value);
       if(!nominal) return;
-      showListLoading();
+    
       const payload = {
         type: 'TRANSFER',
         dari: document.getElementById('t_dari').value,
@@ -1517,7 +1522,7 @@ function unmask(val) {
       const id = document.getElementById('pi_id').value;
       const nominal = unmask(document.getElementById('pi_nom').value);
       if(!id || !nominal) return;
-      showListLoading();
+ 
       const payload = {
         type: 'BAYAR_PIUTANG',
         idPiutang: id,
@@ -1540,7 +1545,7 @@ async function updateSub(transactionId) {
   btn.innerHTML = '<i class="loader w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></i>';
 
   try {
-    showListLoading();// Menyiapkan data yang akan dikirim
+   // Menyiapkan data yang akan dikirim
     const payload = {
       action: "updateTransactionSub",
       transactionId: transactionId,
