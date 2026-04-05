@@ -1370,42 +1370,42 @@ function unmask(val) {
         </div>`;
     }
 
-   async function runScript(method, payload) {
-  // Tampilkan loading/spinner jika ada
-  const btn = document.querySelector('button[onclick*="runScript"]');
+async function runScript(method, payload) {
+  // 1. Kunci tombol agar tidak klik ganda
+  const btn = document.querySelector('button[onclick*="save"]');
   if (btn) btn.disabled = true;
 
+  // 2. Langsung kunci daftar riwayat (efek gelap)
+  if (typeof showListLoading === 'function') showListLoading();
+
   try {
-    const response = await fetch(WEB_APP_URL, {
+    await fetch(WEB_APP_URL, {
       method: "POST",
-      mode: "no-cors", // Penting agar tidak terblokir kebijakan CORS browser
+      mode: "no-cors",
       cache: "no-cache",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload), // Mengirim data transaksi
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
 
-    // Karena menggunakan 'no-cors', kita tidak bisa membaca respon JSON secara detail,
-    // tapi kita bisa mengasumsikan sukses jika tidak ada error network.
-    console.log("Transaksi dikirim ke server");
-    
+    // 3. Langsung tutup modal tanpa menunggu alert
+    closeModal();
+
+    // 4. Beri jeda sebentar lalu segarkan data
     setTimeout(() => {
-      closeModal();
-        showListLoading();
-      refreshData(); // Memperbarui tampilan saldo & tabel
-      alert("Transaksi Berhasil Diproses");
-    }, 1500);
+      refreshData(); // refreshData harus memanggil hideListLoading() di akhirnya
+    }, 1000);
 
   } catch (err) {
-    hideListLoading();
-    console.error("Gagal mengirim transaksi:", err);
-    alert("Terjadi kesalahan koneksi ke server.");
+    // 5. Jika GAGAL, buka kembali kuncinya dan beri peringatan
+    if (typeof hideListLoading === 'function') hideListLoading();
+    console.error("Gagal:", err);
+    alert("Koneksi bermasalah. Data gagal terkirim ke server!");
   } finally {
     if (btn) btn.disabled = false;
   }
 }
 
+    
     function savePenjualan() {
       const items = collectItems();
       if(items.length === 0) return;
@@ -1419,8 +1419,7 @@ function unmask(val) {
         metode: document.getElementById('p_metode').value
       };
       payload.total = items.reduce((a, b) => a + (b.qty * b.harga), 0);
-      
-      showLoading();
+    
       runScript('processTransaction', payload);
     }
 
@@ -1436,36 +1435,28 @@ function unmask(val) {
       };
       payload.total = items.reduce((a, b) => a + (b.qty * b.harga), 0);
       
-      showLoading();
       runScript('processTransaction', payload);
     }
 
- async function saveOperasional() {
-  // 1. Ambil elemen-elemen input
+async function saveOperasional() {
   const elNom = document.getElementById('op_nom');
   const elKet = document.getElementById('op_ket');
   const elMetode = document.getElementById('op_metode');
   const elRefund = document.getElementById('is_refund');
 
-  // 2. Validasi elemen
   if (!elNom || !elKet) return;
 
-  // 3. Ambil nilai dan bersihkan format
   const nominal = unmask(elNom.value);
   const keterangan = elKet.value.trim();
   const metode = elMetode ? elMetode.value : "Cash";
   const isRefund = elRefund ? elRefund.checked : false;
 
-  // 4. Cek validasi input kosong
   if (nominal <= 0 || keterangan === "") {
     alert("Mohon isi nominal dan keterangan pengeluaran.");
     return;
   }
-
-  // 5. Susun Payload
   
   const payload = {
-    // Tambahkan properti action agar doPost di Apps Script tahu apa yang harus dilakukan
     action: "saveOperasional", 
     type: isRefund ? "PENGEMBALIAN_DANA" : "OPERASIONAL",
     nominal: nominal,
@@ -1473,31 +1464,35 @@ function unmask(val) {
     metode: metode
   };
 
-   showLoading();
+  // 1. Hilangkan showLoading() lama, ganti dengan pengunci daftar riwayat
+  if (typeof showListLoading === 'function') showListLoading();
 
   try {
-    // 6. Kirim data ke Google Apps Script menggunakan fetch
     await fetch(WEB_APP_URL, {
       method: "POST",
-      mode: "no-cors", // Wajib untuk menghindari blokir CORS di GitHub Pages
+      mode: "no-cors",
       cache: "no-cache",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
 
-    // Karena menggunakan no-cors, kita beri jeda agar server selesai memproses
+    // 2. Langsung tutup modal agar proses terasa cepat
+    closeModal();
+
     setTimeout(() => {
-      alert(isRefund ? "Dana Refund berhasil dicatat!" : "Pengeluaran operasional berhasil disimpan.");
-      closeModal();
-      hideLoading();
-       showListLoading();
-      refreshData(); // Perbarui tampilan saldo dan tabel
+      // 3. LOGIKA KONFIRMASI:
+      // Hanya tampilkan alert jika ini adalah Dana Refund
+      if (isRefund) {
+        alert("Dana Refund berhasil dicatat!");
+      }
+      
+      // Jika operasional biasa, tidak ada alert (langsung refresh)
+      refreshData(); 
     }, 1500);
 
   } catch (err) {
-    hideLoading();
+    // 4. KONFIRMASI GAGAL: Tetap tampilkan jika terjadi error
+    if (typeof hideListLoading === 'function') hideListLoading();
     console.error("Kesalahan koneksi:", err);
     alert("Gagal menyimpan: Terjadi kesalahan koneksi ke server.");
   }
@@ -1514,7 +1509,7 @@ function unmask(val) {
         ke: document.getElementById('t_ke').value,
         nominal: nominal
       };
-      showLoading();
+   
       runScript('processTransaction', payload);
     }
 
@@ -1529,7 +1524,7 @@ function unmask(val) {
         nominal: nominal,
         metode: document.getElementById('pi_metode').value
       };
-      showLoading();
+     
       runScript('processTransaction', payload);
     }
 
