@@ -1375,10 +1375,14 @@ async function runScript(method, payload) {
   const btn = document.querySelector('button[onclick*="save"]');
   if (btn) btn.disabled = true;
 
-  // 2. Langsung kunci daftar riwayat (efek gelap)
+  // 2. LANGSUNG TUTUP MODAL (Agar user tidak menunggu proses jaringan)
+  if (typeof closeModal === 'function') closeModal();
+
+  // 3. Langsung kunci daftar riwayat (efek gelap & memuat data)
   if (typeof showListLoading === 'function') showListLoading();
 
   try {
+    // 4. Kirim data di latar belakang
     await fetch(WEB_APP_URL, {
       method: "POST",
       mode: "no-cors",
@@ -1387,16 +1391,14 @@ async function runScript(method, payload) {
       body: JSON.stringify(payload),
     });
 
-    // 3. Langsung tutup modal tanpa menunggu alert
-    closeModal();
-
-    // 4. Beri jeda sebentar lalu segarkan data
+    // 5. Beri jeda sebentar agar server selesai menulis, lalu segarkan data
     setTimeout(() => {
-      refreshData(); // refreshData harus memanggil hideListLoading() di akhirnya
+      if (typeof refreshData === 'function') refreshData(); 
+      // Catatan: refreshData harus memanggil hideListLoading() di akhirnya
     }, 1000);
 
   } catch (err) {
-    // 5. Jika GAGAL, buka kembali kuncinya dan beri peringatan
+    // 6. Jika GAGAL, buka kembali kuncinya dan beri peringatan
     if (typeof hideListLoading === 'function') hideListLoading();
     console.error("Gagal:", err);
     alert("Koneksi bermasalah. Data gagal terkirim ke server!");
@@ -1464,10 +1466,14 @@ async function saveOperasional() {
     metode: metode
   };
 
-  // 1. Hilangkan showLoading() lama, ganti dengan pengunci daftar riwayat
+  // 1. LANGSUNG TUTUP MODAL agar user tidak merasa menunggu
+  if (typeof closeModal === 'function') closeModal();
+
+  // 2. Langsung kunci daftar riwayat dengan efek gelap (visual loading)
   if (typeof showListLoading === 'function') showListLoading();
 
   try {
+    // 3. Proses pengiriman data berjalan di latar belakang (background)
     await fetch(WEB_APP_URL, {
       method: "POST",
       mode: "no-cors",
@@ -1476,28 +1482,23 @@ async function saveOperasional() {
       body: JSON.stringify(payload),
     });
 
-    // 2. Langsung tutup modal agar proses terasa cepat
-    closeModal();
-
     setTimeout(() => {
-      // 3. LOGIKA KONFIRMASI:
-      // Hanya tampilkan alert jika ini adalah Dana Refund
+      // 4. Hanya tampilkan alert jika ini adalah Dana Refund
       if (isRefund) {
         alert("Dana Refund berhasil dicatat!");
       }
       
-      // Jika operasional biasa, tidak ada alert (langsung refresh)
+      // 5. Segarkan data (refreshData harus memanggil hideListLoading di akhirnya)
       refreshData(); 
     }, 1500);
 
   } catch (err) {
-    // 4. KONFIRMASI GAGAL: Tetap tampilkan jika terjadi error
+    // 6. Jika GAGAL, buka kembali kuncinya dan beri peringatan
     if (typeof hideListLoading === 'function') hideListLoading();
     console.error("Kesalahan koneksi:", err);
     alert("Gagal menyimpan: Terjadi kesalahan koneksi ke server.");
   }
 }
-
     
     function saveTransfer() {
         const nominal = unmask(document.getElementById('t_nom').value);
