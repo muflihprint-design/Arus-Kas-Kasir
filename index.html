@@ -265,7 +265,7 @@ display: block !important;
     let currentView = 'Semua'; 
     let currentCategory = 'SEMUA'; // State baru
     let masterBarang = ["Kertas A4", "Tinta Hitam", "Jilid Hardcover", "Banner Flexy", "Stiker Vinyl", "Cetak Foto", "Fotocopy"];
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxx3Ddl1iLD4wIC1dK2WFMy2ZdMcWbCCFFS8TpmLP0X0SbKPhCkrNJk5o-BjyWYt-1zMg/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwpN19jU4fivkR_maXaU4nNBkbToPxnSqe-LQ2EVoFOSwcXQojEc7gD-AdFqAGMFzuOCQ/exec";
 
     /** INISIALISASI **/
  window.onload = () => {
@@ -1627,35 +1627,27 @@ async function bayarUtang(idUtang, sisaLama) {
   content.innerHTML = `
     <div class="p-10 text-center">
       <div class="w-10 h-10 border-4 border-slate-200 border-t-red-500 rounded-full animate-spin mx-auto mb-4"></div>
-      <p class="text-slate-500 font-medium">Mengambil rincian...</p>
+      <p class="text-slate-500 font-medium">Mengambil rincian transaksi...</p>
     </div>`;
 
   try {
-    // 2. Fetch Detail Barang (Menggunakan URL Web App)
+    // 2. Fetch Data (Satu request mendapatkan Subjek & Items)
     const response = await fetch(`${WEB_APP_URL}?action=getDetail&id=${encodeURIComponent(idUtang)}`);
-    if (!response.ok) throw new Error("Respon server tidak ok");
-    const items = await response.json();
-
-    // 3. Ambil Nama Supplier (Memanggil fungsi getActivePayables di Code.gs)
-    // Karena google.script.run berbasis callback, kita buatkan pembungkus Promise
-    const listUtang = await new Promise((resolve, reject) => {
-      google.script.run
-        .withSuccessHandler(resolve)
-        .withFailureHandler(reject)
-        .getActivePayables(); // Nama fungsi di Code.gs Anda
-    });
-
-    // Cari supplier berdasarkan ID_Pembelian
-    const targetID = String(idUtang).trim();
-    const infoUtang = listUtang.find(u => String(u.ID_Pembelian).trim() === targetID);
     
-    // Perhatikan: Apps Script Anda mengubah "Supplier" tetap "Supplier" karena tidak ada spasi
-    const namaSupplier = infoUtang ? (infoUtang.Supplier || "Supplier Tanpa Nama") : "Tidak Diketahui";
+    if (!response.ok) throw new Error("Respon server tidak ok");
+    
+    // Data yang diterima: { "subjek": "Nama Supplier", "items": [...] }
+    const resData = await response.json();
+    console.log("Data Diterima:", resData);
 
-    // 4. Render HTML Modal
-    let itemsHtml = `<div class="mt-3 pt-3 border-t border-dotted border-slate-200 text-center py-4">
-                        <p class="text-xs text-slate-400 italic">Rincian barang tidak tersedia</p>
-                     </div>`;
+    const namaSupplier = resData.subjek || "Tidak Diketahui";
+    const items = resData.items || [];
+
+    // 3. Susun Rincian Barang HTML
+    let itemsHtml = `
+      <div class="mt-3 pt-3 border-t border-dotted border-slate-200 text-center py-4">
+        <p class="text-xs text-slate-400 italic">Rincian barang tidak tersedia</p>
+      </div>`;
 
     if (Array.isArray(items) && items.length > 0) {
       itemsHtml = `
@@ -1672,46 +1664,60 @@ async function bayarUtang(idUtang, sisaLama) {
         </div>`;
     }
 
-    // 5. Update Isi Modal
+    // 4. Render Modal
     content.innerHTML = `
       <div class="p-2">
         <h2 class="text-xl font-bold text-red-600 mb-2 flex items-center gap-2">
           <i data-lucide="shield-check"></i> Konfirmasi Pelunasan
         </h2>
+        <p class="text-sm text-slate-500 mb-4">Pastikan rincian berikut sesuai sebelum membayar.</p>
+        
         <div class="bg-white border-2 border-red-100 rounded-2xl p-4 mb-5 shadow-sm">
           <div class="flex justify-between items-start pb-3">
             <div>
               <p class="text-[10px] font-bold text-slate-400 uppercase">Supplier</p>
               <h3 class="font-bold text-slate-800 text-lg">${namaSupplier}</h3>
             </div>
-            <div class="text-right">
-              <p class="text-[10px] font-bold text-slate-400 uppercase">ID Pembelian</p>
-              <p class="font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded text-[10px]">${idUtang}</p>
+            <div class="text-right text-[10px]">
+              <p class="font-bold text-slate-400 uppercase">ID Pembelian</p>
+              <p class="font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">${idUtang}</p>
             </div>
           </div>
+
           ${itemsHtml}
+
           <div class="mt-4 bg-red-50 p-3 rounded-xl flex justify-between items-center border border-red-100">
             <span class="text-sm font-bold text-red-800">Total Pelunasan:</span>
             <span class="text-xl font-black text-red-600">${formatRupiah(sisaLama)}</span>
           </div>
         </div>
+
         <div class="space-y-4">
-          <select id="pay_utang_metode" class="w-full p-3.5 border-2 border-slate-100 rounded-xl font-bold outline-none bg-slate-50">
-            <option value="Cash">Cash (Tunai)</option>
-            <option value="Rekening">Rekening (Transfer)</option>
-          </select>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Sumber Dana</label>
+            <select id="pay_utang_metode" class="w-full p-3.5 border-2 border-slate-100 rounded-xl font-bold outline-none bg-slate-50">
+              <option value="Cash">Cash (Tunai)</option>
+              <option value="Rekening">Rekening (Transfer)</option>
+            </select>
+          </div>
+
           <div class="flex gap-3">
-            <button onclick="closeModal()" class="flex-1 py-3.5 bg-slate-100 text-slate-600 font-bold rounded-xl">Batal</button>
-            <button onclick="eksekusiPelunasanUtang('${idUtang}', ${sisaLama})" class="flex-[2] py-3.5 bg-red-600 text-white font-bold rounded-xl shadow-lg">Ya, Bayar Lunas</button>
+            <button onclick="closeModal()" class="flex-1 py-3.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Batal</button>
+            <button onclick="eksekusiPelunasanUtang('${idUtang}', ${sisaLama})" class="flex-[2] py-3.5 bg-red-600 text-white font-bold rounded-xl shadow-lg hover:bg-red-700 transition">Ya, Bayar Lunas</button>
           </div>
         </div>
       </div>
     `;
-    if(window.lucide) lucide.createIcons();
+    lucide.createIcons();
 
   } catch (error) {
-    console.error("ERROR:", error);
-    content.innerHTML = `<div class="p-10 text-center text-red-500">Gagal memuat data: ${error.message}</div>`;
+    console.error("CRITICAL ERROR:", error);
+    content.innerHTML = `
+      <div class="p-10 text-center">
+        <div class="text-red-500 mb-4 font-bold">Terjadi kesalahan teknis</div>
+        <p class="text-xs text-slate-400 mb-4">${error.message}</p>
+        <button onclick="closeModal()" class="px-6 py-2 bg-slate-100 rounded-lg text-sm font-bold">Kembali</button>
+      </div>`;
   }
 }
 
