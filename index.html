@@ -1091,8 +1091,20 @@ function renderTransactions() {
           <option value="Rekening">Rekening</option>
         </select>
 
+        <div>
+  <label class="block text-[10px] font-bold text-slate-400 uppercase ml-1 mb-1">Bayar Sekarang (DP)</label>
+  <input 
+    id="b_dp" 
+    type="text" 
+    inputmode="numeric" 
+    oninput="maskNominal(this)" 
+    placeholder="Masukkan nominal bayar" 
+    class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-blue-100 outline-none accounting font-bold text-blue-600"
+  >
+</div>
+
         <div class="bg-red-50 p-4 rounded-xl border border-red-100 flex justify-between items-center">
-          <span class="font-bold text-red-800">Total Bayar:</span>
+          <span class="font-bold text-red-800">Total Belanja:</span>
           <span id="b_final" class="text-xl font-bold text-red-700">Rp 0</span>
         </div>
 
@@ -1429,20 +1441,28 @@ async function runScript(method, payload) {
       runScript('processTransaction', payload);
     }
 
-    function savePembelian() {
-      const items = collectItems();
-      if(items.length === 0) return;
+   function savePembelian() {
+  const items = collectItems();
+  if(items.length === 0) return;
+
+  // Hitung total belanja
+  const total = items.reduce((a, b) => a + (b.qty * b.harga), 0);
+  // Ambil nilai DP/Bayar (pastikan ID input sesuai di HTML Anda, misal: b_dp)
+  const dp = unmask(document.getElementById('b_dp').value) || 0;
+
+  const payload = {
+    type: 'PEMBELIAN',
+    supplier: document.getElementById('b_supp').value || '-',
+    items: items,
+    total: total,
+    dp: dp,
+    metode: document.getElementById('b_metode').value,
+    // Jika DP kurang dari Total, maka status otomatis UTANG
+    status: dp < total ? "UTANG" : "LUNAS"
+  };
   
-      const payload = {
-        type: 'PEMBELIAN',
-        supplier: document.getElementById('b_supp').value || '-',
-        items: items,
-        metode: document.getElementById('b_metode').value
-      };
-      payload.total = items.reduce((a, b) => a + (b.qty * b.harga), 0);
-      
-      runScript('processTransaction', payload);
-    }
+  runScript('processTransaction', payload);
+}
 
 async function saveOperasional() {
   const elNom = document.getElementById('op_nom');
