@@ -214,7 +214,7 @@ display: block !important;
         <span class="absolute inset-y-0 left-3 flex items-center text-gray-400">
           <i data-lucide="search" class="w-4 h-4"></i>
         </span>
-        <input type="text" id="searchInput" oninput="renderTransactions()" placeholder="Cari keterangan atau nama..." 
+        <input type="text" id="searchInput" oninput="renderTransactions()" placeholder="Cari ID, keterangan atau nama..." 
                class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-100">
       </div>
       
@@ -265,7 +265,7 @@ display: block !important;
     let currentView = 'Semua'; 
     let currentCategory = 'SEMUA'; // State baru
     let masterBarang = ["Kertas A4", "Tinta Hitam", "Jilid Hardcover", "Banner Flexy", "Stiker Vinyl", "Cetak Foto", "Fotocopy"];
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzl5Wz-Mhg0sM63roHHXIuf0ZCe4GojD6gNfwgHKS0Neosk4jLTvgMCrL4hjeDKUm-Cog/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbykWDXLRNx0dFVovBDF3LPUsQpaova0qsKbgVhkOrj6tfh0LmBjcCfv8RwWVShfLsIuyw/exec";
 
     /** INISIALISASI **/
  window.onload = () => {
@@ -908,7 +908,8 @@ function renderTransactions() {
     }
 
     // 4. Logika Pencarian
-    const matchSearch = t.ket.toLowerCase().includes(searchTerm) ||
+    const matchSearch = t.id.toLowerCase().includes(searchTerm) ||
+                        t.ket.toLowerCase().includes(searchTerm) ||
                         t.sub.toLowerCase().includes(searchTerm) ||
                         t.kat.toLowerCase().includes(searchTerm);
 
@@ -1280,7 +1281,7 @@ function renderUtangModal(list, container) {
             <p class="text-lg font-bold text-red-600">Rp ${Number(item.Sisa_Utang).toLocaleString('id-ID')}</p>
           </div>
         </div>
-        <button onclick="bayarUtang('${item.ID_Pembelian}', ${item.Sisa_Utang})" 
+        <button onclick="bayarUtang('${item.ID_Pembelian}', ${item.Sisa_Utang}, '${item.Supplier}')" 
                 class="w-full py-2.5 bg-red-50 text-red-600 rounded-lg font-bold text-xs hover:bg-red-600 hover:text-white transition flex items-center justify-center gap-2">
           <i data-lucide="banknote" class="w-4 h-4"></i> Pelunasan Utang
         </button>
@@ -1620,7 +1621,7 @@ async function saveOperasional() {
     }
 
 
-async function bayarUtang(idUtang, sisaLama) {
+async function bayarUtang(idUtang, sisaLama, namaSupplier) {
   const content = document.getElementById('modalContent');
   
   // 1. Loading State
@@ -1634,6 +1635,7 @@ async function bayarUtang(idUtang, sisaLama) {
     // DEBUG: Pastikan URL dan ID benar di Console (F12)
     console.log("Fetching dari:", WEB_APP_URL);
     console.log("ID Transaksi:", idUtang);
+    console.log("Supplier:", namaSupplier);
 
     // 2. Fetch dengan penanganan timeout/error yang lebih baik
     const response = await fetch(`${WEB_APP_URL}?action=getDetail&id=${encodeURIComponent(idUtang)}`);
@@ -1651,13 +1653,6 @@ async function bayarUtang(idUtang, sisaLama) {
       console.warn("Gagal parse items JSON:", e);
       items = []; 
     }
-
-    // 3. Ambil info supplier (Gunakan try-catch agar tidak mematikan seluruh fungsi jika gagal)
-    let infoUtang = null;
-    try {
-      const listUtang = await fetchData("Utang");
-      infoUtang = listUtang.find(u => u.ID_Pembelian === idUtang);
-    } catch (e) { console.warn("Gagal ambil list utang:", e); }
 
     // 4. Susun Rincian Barang
     let itemsHtml = `
@@ -1692,7 +1687,7 @@ async function bayarUtang(idUtang, sisaLama) {
           <div class="flex justify-between items-start pb-3">
             <div>
               <p class="text-[10px] font-bold text-slate-400 uppercase">Supplier</p>
-              <h3 class="font-bold text-slate-800 text-lg">${infoUtang ? (infoUtang.Supplier || infoUtang.supplier) : 'Tidak Diketahui'}</h3>
+              <h3 class="font-bold text-slate-800 text-lg">${namaSupplier || 'Tidak Diketahui'}</h3>
             </div>
             <div class="text-right text-[10px]">
               <p class="font-bold text-slate-400 uppercase">ID Pembelian</p>
