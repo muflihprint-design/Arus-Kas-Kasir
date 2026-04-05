@@ -47,6 +47,27 @@
       background-color: #f1f5f9;
     }
 
+
+    /* Efek Overlay untuk Daftar Transaksi */
+.list-lock-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4); /* Slate-900 dengan transparansi */
+  backdrop-filter: blur(2px);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  pointer-events: all; /* Mengunci klik ke elemen di bawahnya */
+}
+
+/* Memastikan container riwayat relatif agar overlay tidak lari */
+#listContainerWrapper {
+  position: relative;
+}
+    
    /* CSS UNTUK CETAK (PRINT) */
 @media print {
   @page {
@@ -199,9 +220,12 @@ display: block !important;
       <button onclick="setCategory('OPERASIONAL')" id="cat-operasional" class="flex-1 py-2 border-b-2 border-transparent hover:bg-gray-50">Operasional</button>
     </div>
 
-    <div id="listContainer" class="divide-y max-h-[500px] overflow-y-auto">
-      <div class="p-8 text-center text-gray-400">Memuat data...</div>
-    </div>
+    <div id="listContainerWrapper" class="relative">
+  <div id="listContainer" class="divide-y max-h-[500px] overflow-y-auto">
+    <div class="p-8 text-center text-gray-400">Memuat data...</div>
+  </div>
+  <div id="loadingOverlayContainer"></div> 
+</div>
   </div>
 </div>
 
@@ -253,6 +277,25 @@ const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzcAfXQ-Ri-87CtvCpI
     setInterval(refreshData, 30000);
 };
 
+function showListLoading() {
+  const container = document.getElementById('loadingOverlayContainer');
+  container.innerHTML = `
+    <div class="list-lock-overlay">
+      <div class="bg-white p-4 rounded-xl shadow-xl flex items-center gap-3 border border-slate-200">
+        <div class="loader w-5 h-5 border-2 border-blue-100 border-t-blue-600 rounded-full"></div>
+        <span class="text-sm font-bold text-slate-700 animate-pulse">Sinkronisasi data terbaru...</span>
+      </div>
+    </div>
+  `;
+}
+
+function hideListLoading() {
+  const container = document.getElementById('loadingOverlayContainer');
+  container.innerHTML = '';
+}
+
+    
+    
       /** FUNGSI AMBIL DATA BARANG DARI SERVER **/
    function fetchMasterBarang() {
   // Menambahkan parameter ?action=getStockNames agar Apps Script tahu apa yang harus diambil
@@ -690,6 +733,7 @@ async function confirmCancel(id) {
   if (typeof showLoading === "function") showLoading();
 
   // --- MULAI PROSES FETCH KE GITHUB ---
+  showListLoading();
   try {
     const payload = {
       action: "processCancelOrder",
@@ -778,9 +822,10 @@ async function confirmCancel(id) {
     
     currentTransactions = transactions;
     renderTransactions();
-
+    hideListLoading();
     console.log("Data berhasil diperbarui dari server.");
   } catch (err) {
+    hideListLoading();
     console.error("Gagal refresh data:", err);
     // Fallback data jika server gagal diakses
     document.getElementById('cashBal').innerText = formatRupiah(0);
@@ -1360,7 +1405,7 @@ function unmask(val) {
     function savePenjualan() {
       const items = collectItems();
       if(items.length === 0) return;
-      
+      showListLoading();
       const payload = {
         type: 'PENJUALAN',
         pelanggan: document.getElementById('p_cust').value || 'Umum',
@@ -1378,7 +1423,7 @@ function unmask(val) {
     function savePembelian() {
       const items = collectItems();
       if(items.length === 0) return;
-      
+      showListLoading();
       const payload = {
         type: 'PEMBELIAN',
         supplier: document.getElementById('b_supp').value || '-',
@@ -1414,6 +1459,7 @@ function unmask(val) {
   }
 
   // 5. Susun Payload
+   showListLoading();
   const payload = {
     // Tambahkan properti action agar doPost di Apps Script tahu apa yang harus dilakukan
     action: "saveOperasional", 
@@ -1456,7 +1502,7 @@ function unmask(val) {
     function saveTransfer() {
         const nominal = unmask(document.getElementById('t_nom').value);
       if(!nominal) return;
-      
+      showListLoading();
       const payload = {
         type: 'TRANSFER',
         dari: document.getElementById('t_dari').value,
@@ -1471,7 +1517,7 @@ function unmask(val) {
       const id = document.getElementById('pi_id').value;
       const nominal = unmask(document.getElementById('pi_nom').value);
       if(!id || !nominal) return;
-      
+      showListLoading();
       const payload = {
         type: 'BAYAR_PIUTANG',
         idPiutang: id,
@@ -1494,7 +1540,7 @@ async function updateSub(transactionId) {
   btn.innerHTML = '<i class="loader w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></i>';
 
   try {
-    // Menyiapkan data yang akan dikirim
+    showListLoading();// Menyiapkan data yang akan dikirim
     const payload = {
       action: "updateTransactionSub",
       transactionId: transactionId,
@@ -1519,6 +1565,7 @@ async function updateSub(transactionId) {
     }, 1200);
 
   } catch (err) {
+    hideListLoading();
     console.error("Gagal update sub:", err);
     btn.disabled = false;
     btn.innerHTML = originalHtml;
