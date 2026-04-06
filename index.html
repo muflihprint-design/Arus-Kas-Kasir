@@ -260,12 +260,13 @@ display: block !important;
 
   <script>
     /** STATE APLIKASI **/
+    let isDetailChanged = false; // Penanda apakah ada perubahan di dalam modal
     let currentTransactions = [];
     let currentFilter = 'today';
     let currentView = 'Semua'; 
     let currentCategory = 'SEMUA'; // State baru
     let masterBarang = ["Kertas A4", "Tinta Hitam", "Jilid Hardcover", "Banner Flexy", "Stiker Vinyl", "Cetak Foto", "Fotocopy"];
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbykWDXLRNx0dFVovBDF3LPUsQpaova0qsKbgVhkOrj6tfh0LmBjcCfv8RwWVShfLsIuyw/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzcdAS-NeLNlHqDHUdcmilHuitEYuC-7GKI9fGNMFSiakB6UkxnxkhDJLC-SUwQiaCrBQ/exec";
 
     /** INISIALISASI **/
  window.onload = () => {
@@ -333,6 +334,7 @@ function hideListLoading() {
 
   /** MODAL DETAIL TRANSAKSI DENGAN LOGIKA DISKON **/
   function showDetail(t) {
+    isDetailChanged = false;
       const overlay = document.getElementById('modalOverlay');
       const content = document.getElementById('modalContent');
       overlay.classList.remove('hidden');
@@ -344,32 +346,42 @@ function hideListLoading() {
       let detailHtml = '';
       let calculatedSubtotal = 0;
 
-      // 1. Kalkulasi Subtotal dari daftar item
+     // 1. Kalkulasi Subtotal dari daftar item (DENGAN CHECKBOX STATUS)
       if (t.detail && Array.isArray(t.detail) && t.detail.length > 0) {
         detailHtml = `
-          <div class="mt-6 border rounded-xl overflow-hidden">
-            <div class="bg-slate-50 px-4 py-2 border-b">
-               <p class="font-bold text-xs text-slate-500 uppercase">Item Transaksi</p>
+          <div class="mt-6 border rounded-xl overflow-hidden shadow-sm">
+            <div class="bg-slate-50 px-4 py-2 border-b flex justify-between items-center">
+               <p class="font-bold text-[10px] text-slate-500 uppercase tracking-wider">Item & Status Periksa</p>
             </div>
             <table class="w-full text-xs">
-              <thead class="bg-slate-50 border-b">
+              <thead class="bg-slate-50 border-b text-slate-400">
                 <tr>
+                  <th class="p-2 text-left w-10">Pilih</th>
                   <th class="p-2 text-left">Item</th>
                   <th class="p-2 text-center">Qty</th>
-                  <th class="p-2 text-right">Harga</th>
                   <th class="p-2 text-right">Subtotal</th>
                 </tr>
               </thead>
               <tbody class="divide-y">
-                ${t.detail.map(d => {
+                ${t.detail.map((d, index) => {
                   const lineTotal = d.qty * d.harga;
                   calculatedSubtotal += lineTotal;
+                  // Logika Adaptif: Jika data lama (undefined), anggap false
+                  const isChecked = d.checked || false; 
+
                   return `
-                  <tr>
-                    <td class="p-2">${d.nama}</td>
-                    <td class="p-2 text-center">${d.qty}</td>
-                    <td class="p-2 text-right">${formatRupiah(d.harga)}</td>
-                    <td class="p-2 text-right font-medium">${formatRupiah(lineTotal)}</td>
+                  <tr class="${isChecked ? 'bg-green-50/50' : 'bg-white'} transition-colors">
+                    <td class="p-2 text-center">
+                      <input type="checkbox" 
+                        ${isChecked ? 'checked' : ''} 
+                        class="w-4 h-4 cursor-pointer accent-green-600"
+                        onchange="toggleItemCheck('${t.id}', ${index}, this.checked)">
+                    </td>
+                    <td class="p-2">
+                      <span class="font-medium ${isChecked ? 'line-through text-slate-400' : 'text-slate-700'}">${d.nama}</span>
+                    </td>
+                    <td class="p-2 text-center text-slate-500">${d.qty}</td>
+                    <td class="p-2 text-right font-mono ${isChecked ? 'text-slate-300' : 'text-slate-600'}">${formatRupiah(lineTotal)}</td>
                   </tr>`;
                 }).join('')}
               </tbody>
@@ -471,6 +483,38 @@ function hideListLoading() {
       lucide.createIcons();
     }
 
+
+   function toggleItemCheck(trxId, itemIndex, isChecked) {
+  // Efek Visual
+  const checkbox = event.target;
+  const row = checkbox.closest('tr');
+  const textName = row.querySelector('span');
+  
+  if (isChecked) {
+    row.classList.add('bg-green-50/50');
+    textName.classList.add('line-through', 'text-slate-400');
+  } else {
+    row.classList.remove('bg-green-50/50');
+    textName.classList.remove('line-through', 'text-slate-400');
+  }
+
+     isDetailChanged = true; // Tandai bahwa ada perubahan data!
+  // Kirim data menggunakan fetch (Bisa jalan dari file lokal/offline)
+  fetch(WEB_APP_URL, {
+    method: "POST",
+    body: JSON.stringify({
+      action: "updateItemCheckStatus",
+      trxId: trxId,
+      itemIndex: itemIndex,
+      isChecked: isChecked
+    })
+  })
+  .then(response => response.json())
+  .then(res => {
+    if(!res.success) alert("Gagal simpan ke server: " + res.error);
+  })
+  .catch(err => console.error("Koneksi gagal:", err));
+}
 
 async function shareNotaJPG(id) {
   const t = currentTransactions.find(item => item.id === id);
@@ -1319,9 +1363,27 @@ function renderUtangModal(list, container) {
       lucide.createIcons();
     }
 
-    function closeModal() {
-      document.getElementById('modalOverlay').classList.add('hidden');
+   function closeModal() {
+  // 1. Sembunyikan modal
+  document.getElementById('modalOverlay').classList.add('hidden');
+
+  // 2. Cek apakah ada perubahan selama modal terbuka
+  if (isDetailChanged) {
+    console.log("Perubahan terdeteksi, memperbarui daftar transaksi...");
+    
+    // Panggil fungsi refresh data Anda
+    // Berdasarkan kode Anda sebelumnya, fungsinya kemungkinan adalah fetchTransactions() atau loadTransactions()
+    // Ganti nama di bawah ini sesuai dengan fungsi yang Anda gunakan untuk mengambil data awal
+    if (typeof fetchTransactions === "function") {
+      fetchTransactions(); 
+    } else if (typeof loadTransactions === "function") {
+      loadTransactions();
     }
+    
+    // 3. Reset kembali variabel penanda
+    isDetailChanged = false;
+  }
+}
 
  /** MULTI ITEM LOGIC - UPDATED FOR RESPONSIVE LAYOUT **/
 function addItem() {
