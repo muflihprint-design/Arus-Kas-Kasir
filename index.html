@@ -160,10 +160,29 @@ display: block !important;
         <i data-lucide="repeat" class="text-blue-600 mb-1"></i>
         <span class="text-xs font-semibold">Transfer</span>
       </button>
-      <button onclick="openModal('piutang')" class="p-3 bg-white border rounded-lg flex flex-col items-center hover:bg-purple-50 shadow-sm transition">
-        <i data-lucide="hand-coins" class="text-purple-600 mb-1"></i>
-        <span class="text-xs font-semibold">Piutang</span>
-      </button>
+    <div class="relative group">
+        <button class="w-full p-3 bg-white border rounded-lg flex flex-col items-center hover:bg-indigo-50 shadow-sm transition">
+          <i data-lucide="arrow-up-down" class="text-indigo-600 mb-1"></i>
+          <span class="text-xs font-semibold flex items-center gap-1">
+            Utang-Piutang
+            <i data-lucide="chevron-down" class="w-2.5 h-2.5"></i>
+          </span>
+        </button>
+
+        <div class="absolute left-0 mt-1 w-44 bg-white border border-slate-100 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+          <div class="p-1.5">
+            <button onclick="openModal('piutang')" class="w-full flex items-center gap-3 px-3 py-2.5 text-[11px] font-bold text-blue-600 hover:bg-blue-50 rounded-lg transition">
+              <i data-lucide="trending-up" class="w-4 h-4"></i>
+              Daftar Piutang
+            </button>
+            
+            <button onclick="openModal('utang')" class="w-full flex items-center gap-3 px-3 py-2.5 text-[11px] font-bold text-red-600 hover:bg-red-50 rounded-lg transition border-t border-slate-50">
+              <i data-lucide="trending-down" class="w-4 h-4"></i>
+              Daftar Utang
+            </button>
+          </div>
+        </div>
+      </div>
       <button onclick="openModal('cancel_manager')" class="p-3 bg-white border rounded-lg flex flex-col items-center hover:bg-red-50 shadow-sm transition border-red-100">
     <i data-lucide="x-circle" class="text-red-600 mb-1"></i>
     <span class="text-xs font-semibold text-red-600">Cancel</span>
@@ -195,7 +214,7 @@ display: block !important;
         <span class="absolute inset-y-0 left-3 flex items-center text-gray-400">
           <i data-lucide="search" class="w-4 h-4"></i>
         </span>
-        <input type="text" id="searchInput" oninput="renderTransactions()" placeholder="Cari keterangan atau nama..." 
+        <input type="text" id="searchInput" oninput="renderTransactions()" placeholder="Cari ID, keterangan atau nama..." 
                class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-100">
       </div>
       
@@ -241,12 +260,13 @@ display: block !important;
 
   <script>
     /** STATE APLIKASI **/
+    let isDetailChanged = false; // Penanda apakah ada perubahan di dalam modal
     let currentTransactions = [];
     let currentFilter = 'today';
     let currentView = 'Semua'; 
     let currentCategory = 'SEMUA'; // State baru
     let masterBarang = ["Kertas A4", "Tinta Hitam", "Jilid Hardcover", "Banner Flexy", "Stiker Vinyl", "Cetak Foto", "Fotocopy"];
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzcAfXQ-Ri-87CtvCpI-ojhZHBhhiJpzHw13Gl7btbFK8d6Mlr3nBBiENqCJ1JaSXfVkA/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx6a89JKRjsswiI30d_TyUsFTH096rxx49kQjAI5NptHjq9KgBdoedbqPHiZSl2HI0oDA/exec";
 
     /** INISIALISASI **/
  window.onload = () => {
@@ -314,6 +334,7 @@ function hideListLoading() {
 
   /** MODAL DETAIL TRANSAKSI DENGAN LOGIKA DISKON **/
   function showDetail(t) {
+    isDetailChanged = false;
       const overlay = document.getElementById('modalOverlay');
       const content = document.getElementById('modalContent');
       overlay.classList.remove('hidden');
@@ -325,32 +346,42 @@ function hideListLoading() {
       let detailHtml = '';
       let calculatedSubtotal = 0;
 
-      // 1. Kalkulasi Subtotal dari daftar item
+     // 1. Kalkulasi Subtotal dari daftar item (DENGAN CHECKBOX STATUS)
       if (t.detail && Array.isArray(t.detail) && t.detail.length > 0) {
         detailHtml = `
-          <div class="mt-6 border rounded-xl overflow-hidden">
-            <div class="bg-slate-50 px-4 py-2 border-b">
-               <p class="font-bold text-xs text-slate-500 uppercase">Item Transaksi</p>
+          <div class="mt-6 border rounded-xl overflow-hidden shadow-sm">
+            <div class="bg-slate-50 px-4 py-2 border-b flex justify-between items-center">
+               <p class="font-bold text-[10px] text-slate-500 uppercase tracking-wider">Item & Status Periksa</p>
             </div>
             <table class="w-full text-xs">
-              <thead class="bg-slate-50 border-b">
+              <thead class="bg-slate-50 border-b text-slate-400">
                 <tr>
+                  <th class="p-2 text-left w-10">Pilih</th>
                   <th class="p-2 text-left">Item</th>
                   <th class="p-2 text-center">Qty</th>
-                  <th class="p-2 text-right">Harga</th>
                   <th class="p-2 text-right">Subtotal</th>
                 </tr>
               </thead>
               <tbody class="divide-y">
-                ${t.detail.map(d => {
+                ${t.detail.map((d, index) => {
                   const lineTotal = d.qty * d.harga;
                   calculatedSubtotal += lineTotal;
+                  // Logika Adaptif: Jika data lama (undefined), anggap false
+                  const isChecked = d.checked || false; 
+
                   return `
-                  <tr>
-                    <td class="p-2">${d.nama}</td>
-                    <td class="p-2 text-center">${d.qty}</td>
-                    <td class="p-2 text-right">${formatRupiah(d.harga)}</td>
-                    <td class="p-2 text-right font-medium">${formatRupiah(lineTotal)}</td>
+                  <tr class="${isChecked ? 'bg-green-50/50' : 'bg-white'} transition-colors">
+                    <td class="p-2 text-center">
+                      <input type="checkbox" 
+                        ${isChecked ? 'checked' : ''} 
+                        class="w-4 h-4 cursor-pointer accent-green-600"
+                        onchange="toggleItemCheck('${t.id}', ${index}, this.checked)">
+                    </td>
+                    <td class="p-2">
+                      <span class="font-medium ${isChecked ? 'line-through text-slate-400' : 'text-slate-700'}">${d.nama}</span>
+                    </td>
+                    <td class="p-2 text-center text-slate-500">${d.qty}</td>
+                    <td class="p-2 text-right font-mono ${isChecked ? 'text-slate-300' : 'text-slate-600'}">${formatRupiah(lineTotal)}</td>
                   </tr>`;
                 }).join('')}
               </tbody>
@@ -452,6 +483,38 @@ function hideListLoading() {
       lucide.createIcons();
     }
 
+
+   function toggleItemCheck(trxId, itemIndex, isChecked) {
+  // Efek Visual
+  const checkbox = event.target;
+  const row = checkbox.closest('tr');
+  const textName = row.querySelector('span');
+  
+  if (isChecked) {
+    row.classList.add('bg-green-50/50');
+    textName.classList.add('line-through', 'text-slate-400');
+  } else {
+    row.classList.remove('bg-green-50/50');
+    textName.classList.remove('line-through', 'text-slate-400');
+  }
+
+     isDetailChanged = true; // Tandai bahwa ada perubahan data!
+  // Kirim data menggunakan fetch (Bisa jalan dari file lokal/offline)
+  fetch(WEB_APP_URL, {
+    method: "POST",
+    body: JSON.stringify({
+      action: "updateItemCheckStatus",
+      trxId: trxId,
+      itemIndex: itemIndex,
+      isChecked: isChecked
+    })
+  })
+  .then(response => response.json())
+  .then(res => {
+    if(!res.success) alert("Gagal simpan ke server: " + res.error);
+  })
+  .catch(err => console.error("Koneksi gagal:", err));
+}
 
 async function shareNotaJPG(id) {
   const t = currentTransactions.find(item => item.id === id);
@@ -704,10 +767,18 @@ function renderCancelList() {
 }
 
 /** PROSES EKSEKUSI PEMBATALAN DENGAN KATEGORI SPESIFIK **/
+
 async function confirmCancel(id) {
   // Cari data transaksi berdasarkan ID
   const tx = currentTransactions.find(t => t.id === id);
   if (!tx) return;
+
+  // 1. Validasi Password sebelum lanjut
+  const password = prompt("Masukkan Password Otoritas untuk membatalkan transaksi:");
+  if (password !== "f@th1y4H") {
+    if (password !== null) alert("Password Salah! Anda tidak memiliki akses.");
+    return;
+  }
 
   let kategoriBaru = "";
   const katAsal = tx.kat.toUpperCase().trim();
@@ -722,18 +793,17 @@ async function confirmCancel(id) {
     kategoriBaru = "CANCEL " + katAsal;
   }
 
-  const pesan = `Apakah Anda yakin ingin MEMBATALKAN transaksi ini?\n\n` +
+  const pesan = `Konfirmasi Pembatalan:\n` +
                 `Keterangan: ${tx.ket}\n` +
-                `Kategori akan diubah menjadi: ${kategoriBaru}\n\n` +
-                `Catatan: Stok akan dikembalikan otomatis, namun saldo TIDAK berubah. ` +
-                `Input manual pengembalian dana di menu Operasional jika diperlukan.`;
+                `Kategori Baru: ${kategoriBaru}\n\n` +
+                `Lanjutkan pembatalan?`;
 
   if (!confirm(pesan)) return;
 
-  if (typeof showLoading === "function") showLoading();
+  // 2. Langsung tutup modal dan berikan efek loading pada daftar
+  if (typeof closeModal === "function") closeModal();
+  if (typeof showListLoading === "function") showListLoading();
 
-  // --- MULAI PROSES FETCH KE GITHUB ---
-  showListLoading();
   try {
     const payload = {
       action: "processCancelOrder",
@@ -741,29 +811,28 @@ async function confirmCancel(id) {
       newCategory: kategoriBaru
     };
 
+    // 3. Kirim data di latar belakang
     await fetch(WEB_APP_URL, {
       method: "POST",
-      mode: "no-cors", // Agar tidak terblokir kebijakan CORS
+      mode: "no-cors",
       cache: "no-cache",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
 
-    // Beri jeda agar server selesai memproses update stok & kategori
+    // 4. Segarkan data secara otomatis (tanpa alert sukses)
     setTimeout(() => {
-      alert("Transaksi berhasil dibatalkan sebagai " + kategoriBaru + ". Stok telah diperbarui.");
-      closeModal();
-      if (typeof hideLoading === "function") hideLoading();
-      refreshData(); // Ambil data terbaru dari spreadsheet
+      if (typeof refreshData === "function") refreshData(); 
     }, 1500);
 
   } catch (err) {
+    // 5. Jika gagal, buka kunci list dan beri peringatan
+    if (typeof hideListLoading === "function") hideListLoading();
     console.error("Error Cancel:", err);
-    if (typeof hideLoading === "function") hideLoading();
     alert("Gagal membatalkan transaksi: Terjadi kesalahan koneksi.");
   }
 }
-
+    
  /** FUNGSI SEARCH BOX KUSTOM **/
    function handleSearchInput(inputEl, boxId) {
       const query = inputEl.value.toLowerCase();
@@ -883,7 +952,8 @@ function renderTransactions() {
     }
 
     // 4. Logika Pencarian
-    const matchSearch = t.ket.toLowerCase().includes(searchTerm) ||
+    const matchSearch = t.id.toLowerCase().includes(searchTerm) ||
+                        t.ket.toLowerCase().includes(searchTerm) ||
                         t.sub.toLowerCase().includes(searchTerm) ||
                         t.kat.toLowerCase().includes(searchTerm);
 
@@ -1085,8 +1155,20 @@ function renderTransactions() {
           <option value="Rekening">Rekening</option>
         </select>
 
+        <div>
+  <label class="block text-[10px] font-bold text-slate-400 uppercase ml-1 mb-1">Bayar Sekarang (DP)</label>
+  <input 
+    id="b_dp" 
+    type="text" 
+    inputmode="numeric" 
+    oninput="maskNominal(this)" 
+    placeholder="Masukkan nominal bayar" 
+    class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-blue-100 outline-none accounting font-bold text-blue-600"
+  >
+</div>
+
         <div class="bg-red-50 p-4 rounded-xl border border-red-100 flex justify-between items-center">
-          <span class="font-bold text-red-800">Total Bayar:</span>
+          <span class="font-bold text-red-800">Total Belanja:</span>
           <span id="b_final" class="text-xl font-bold text-red-700">Rp 0</span>
         </div>
 
@@ -1135,6 +1217,26 @@ function renderTransactions() {
         <button onclick="saveTransfer()" class="w-full bg-blue-600 text-white p-4 rounded-xl font-bold hover:bg-blue-700 transition">Proses Mutasi</button>
       </div>
     `;
+  } else if (type === 'utang') {
+    // Tampilan Loading
+    content.innerHTML = `
+      <div class="p-10 text-center">
+        <div class="loader ease-linear rounded-full border-4 border-t-4 border-slate-200 h-12 w-12 mx-auto mb-4" style="border-top-color: #ef4444;"></div>
+        <p class="text-slate-500 font-medium">Mengambil daftar utang supplier...</p>
+      </div>`;
+    
+    // Mengambil data dari Apps Script dengan parameter action khusus
+    fetch(`${WEB_APP_URL}?action=getActivePayables`)
+      .then(response => response.json())
+      .then(list => {
+        // Render daftar utang ke dalam modal
+        renderUtangModal(list, content);
+        lucide.createIcons(); // Render ulang icon
+      })
+      .catch(err => {
+        console.error("Gagal mengambil data utang:", err);
+        content.innerHTML = `<div class="p-10 text-center text-red-500 font-bold">Gagal terhubung ke server. Pastikan Sheet "Utang" sudah ada.</div>`;
+      });
   } else if (type === 'piutang') {
     // Tampilan Loading
     content.innerHTML = `
@@ -1188,7 +1290,53 @@ function renderTransactions() {
   lucide.createIcons();
 }
 
+function renderUtangModal(list, container) {
+  // Filter hanya yang statusnya "Utang"
+  const activeUtang = list.filter(item => item.Status === "Utang");
 
+  if (activeUtang.length === 0) {
+    container.innerHTML = `
+      <div class="p-10 text-center">
+        <i data-lucide="shield-check" class="w-12 h-12 text-green-500 mx-auto mb-3"></i>
+        <h3 class="font-bold text-slate-800">Semua Utang Lunas</h3>
+        <p class="text-xs text-slate-500">Tidak ada tagihan supplier yang tertunda.</p>
+      </div>`;
+    return;
+  }
+
+  let html = `
+    <h2 class="text-xl font-bold mb-4 flex items-center gap-2 text-red-600">
+      <i data-lucide="trending-down"></i> Daftar Utang Supplier
+    </h2>
+    <div class="space-y-3 max-h-[450px] overflow-y-auto pr-1">
+  `;
+
+  activeUtang.forEach(item => {
+    html += `
+      <div class="bg-white border border-red-100 rounded-xl p-4 shadow-sm">
+        <div class="flex justify-between items-start mb-3">
+          <div>
+            <p class="text-[10px] font-bold text-slate-400 uppercase">${item.ID_Pembelian}</p>
+            <h3 class="font-bold text-slate-800">${item.Supplier}</h3>
+            <p class="text-[10px] text-slate-500">${item.Waktu}</p>
+          </div>
+          <div class="text-right">
+            <p class="text-[10px] font-bold text-slate-400 uppercase text-right">Sisa Utang</p>
+            <p class="text-lg font-bold text-red-600">Rp ${Number(item.Sisa_Utang).toLocaleString('id-ID')}</p>
+          </div>
+        </div>
+        <button onclick="bayarUtang('${item.ID_Pembelian}', ${item.Sisa_Utang}, '${item.Supplier}')" 
+                class="w-full py-2.5 bg-red-50 text-red-600 rounded-lg font-bold text-xs hover:bg-red-600 hover:text-white transition flex items-center justify-center gap-2">
+          <i data-lucide="banknote" class="w-4 h-4"></i> Pelunasan Utang
+        </button>
+      </div>
+    `;
+  });
+
+  html += `</div>`;
+  container.innerHTML = html;
+}
+    
 
     function renderPiutangModal(list, content) {
       if (!list || list.length === 0) {
@@ -1215,9 +1363,27 @@ function renderTransactions() {
       lucide.createIcons();
     }
 
-    function closeModal() {
-      document.getElementById('modalOverlay').classList.add('hidden');
+   function closeModal() {
+  // 1. Sembunyikan modal
+  document.getElementById('modalOverlay').classList.add('hidden');
+
+  // 2. Cek apakah ada perubahan selama modal terbuka
+  if (isDetailChanged) {
+    console.log("Perubahan terdeteksi, memperbarui daftar transaksi...");
+    
+    // Panggil fungsi refresh data Anda
+    // Berdasarkan kode Anda sebelumnya, fungsinya kemungkinan adalah fetchTransactions() atau loadTransactions()
+    // Ganti nama di bawah ini sesuai dengan fungsi yang Anda gunakan untuk mengambil data awal
+    if (typeof fetchTransactions === "function") {
+      fetchTransactions(); 
+    } else if (typeof loadTransactions === "function") {
+      loadTransactions();
     }
+    
+    // 3. Reset kembali variabel penanda
+    isDetailChanged = false;
+  }
+}
 
  /** MULTI ITEM LOGIC - UPDATED FOR RESPONSIVE LAYOUT **/
 function addItem() {
@@ -1368,44 +1534,48 @@ function unmask(val) {
         </div>`;
     }
 
-   async function runScript(method, payload) {
-  // Tampilkan loading/spinner jika ada
-  const btn = document.querySelector('button[onclick*="runScript"]');
+async function runScript(method, payload) {
+  // 1. Kunci tombol agar tidak klik ganda
+  const btn = document.querySelector('button[onclick*="save"]');
   if (btn) btn.disabled = true;
 
+  // 2. LANGSUNG TUTUP MODAL (Agar user tidak menunggu proses jaringan)
+  if (typeof closeModal === 'function') closeModal();
+
+  // 3. Langsung kunci daftar riwayat (efek gelap & memuat data)
+  if (typeof showListLoading === 'function') showListLoading();
+
   try {
-    const response = await fetch(WEB_APP_URL, {
+    // 4. Kirim data di latar belakang
+    await fetch(WEB_APP_URL, {
       method: "POST",
-      mode: "no-cors", // Penting agar tidak terblokir kebijakan CORS browser
+      mode: "no-cors",
       cache: "no-cache",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload), // Mengirim data transaksi
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
 
-    // Karena menggunakan 'no-cors', kita tidak bisa membaca respon JSON secara detail,
-    // tapi kita bisa mengasumsikan sukses jika tidak ada error network.
-    console.log("Transaksi dikirim ke server");
-    
+    // 5. Beri jeda sebentar agar server selesai menulis, lalu segarkan data
     setTimeout(() => {
-      closeModal();
-      refreshData(); // Memperbarui tampilan saldo & tabel
-      alert("Transaksi Berhasil Diproses");
-    }, 1500);
+      if (typeof refreshData === 'function') refreshData(); 
+      // Catatan: refreshData harus memanggil hideListLoading() di akhirnya
+    }, 1000);
 
   } catch (err) {
-    console.error("Gagal mengirim transaksi:", err);
-    alert("Terjadi kesalahan koneksi ke server.");
+    // 6. Jika GAGAL, buka kembali kuncinya dan beri peringatan
+    if (typeof hideListLoading === 'function') hideListLoading();
+    console.error("Gagal:", err);
+    alert("Koneksi bermasalah. Data gagal terkirim ke server!");
   } finally {
     if (btn) btn.disabled = false;
   }
 }
 
+    
     function savePenjualan() {
       const items = collectItems();
       if(items.length === 0) return;
-      showListLoading();
+   
       const payload = {
         type: 'PENJUALAN',
         pelanggan: document.getElementById('p_cust').value || 'Umum',
@@ -1415,53 +1585,52 @@ function unmask(val) {
         metode: document.getElementById('p_metode').value
       };
       payload.total = items.reduce((a, b) => a + (b.qty * b.harga), 0);
-      
-      showLoading();
+    
       runScript('processTransaction', payload);
     }
 
-    function savePembelian() {
-      const items = collectItems();
-      if(items.length === 0) return;
-      showListLoading();
-      const payload = {
-        type: 'PEMBELIAN',
-        supplier: document.getElementById('b_supp').value || '-',
-        items: items,
-        metode: document.getElementById('b_metode').value
-      };
-      payload.total = items.reduce((a, b) => a + (b.qty * b.harga), 0);
-      
-      showLoading();
-      runScript('processTransaction', payload);
-    }
+   function savePembelian() {
+  const items = collectItems();
+  if(items.length === 0) return;
 
- async function saveOperasional() {
-  // 1. Ambil elemen-elemen input
+  // Hitung total belanja
+  const total = items.reduce((a, b) => a + (b.qty * b.harga), 0);
+  // Ambil nilai DP/Bayar (pastikan ID input sesuai di HTML Anda, misal: b_dp)
+  const dp = unmask(document.getElementById('b_dp').value) || 0;
+
+  const payload = {
+    type: 'PEMBELIAN',
+    supplier: document.getElementById('b_supp').value || '-',
+    items: items,
+    total: total,
+    dp: dp,
+    metode: document.getElementById('b_metode').value,
+    // Jika DP kurang dari Total, maka status otomatis UTANG
+    status: dp < total ? "UTANG" : "LUNAS"
+  };
+  
+  runScript('processTransaction', payload);
+}
+
+async function saveOperasional() {
   const elNom = document.getElementById('op_nom');
   const elKet = document.getElementById('op_ket');
   const elMetode = document.getElementById('op_metode');
   const elRefund = document.getElementById('is_refund');
 
-  // 2. Validasi elemen
   if (!elNom || !elKet) return;
 
-  // 3. Ambil nilai dan bersihkan format
   const nominal = unmask(elNom.value);
   const keterangan = elKet.value.trim();
   const metode = elMetode ? elMetode.value : "Cash";
   const isRefund = elRefund ? elRefund.checked : false;
 
-  // 4. Cek validasi input kosong
   if (nominal <= 0 || keterangan === "") {
     alert("Mohon isi nominal dan keterangan pengeluaran.");
     return;
   }
-
-  // 5. Susun Payload
-   showListLoading();
+  
   const payload = {
-    // Tambahkan properti action agar doPost di Apps Script tahu apa yang harus dilakukan
     action: "saveOperasional", 
     type: isRefund ? "PENGEMBALIAN_DANA" : "OPERASIONAL",
     nominal: nominal,
@@ -1469,62 +1638,191 @@ function unmask(val) {
     metode: metode
   };
 
-  showLoading();
+  // 1. LANGSUNG TUTUP MODAL (Instan)
+  if (typeof closeModal === 'function') closeModal();
+
+  // 2. Kunci daftar riwayat (Visual feedback bahwa data sedang diproses)
+  if (typeof showListLoading === 'function') showListLoading();
 
   try {
-    // 6. Kirim data ke Google Apps Script menggunakan fetch
+    // 3. Kirim ke server di latar belakang
     await fetch(WEB_APP_URL, {
       method: "POST",
-      mode: "no-cors", // Wajib untuk menghindari blokir CORS di GitHub Pages
+      mode: "no-cors",
       cache: "no-cache",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
 
-    // Karena menggunakan no-cors, kita beri jeda agar server selesai memproses
+    // 4. Segarkan data tanpa memunculkan alert apapun
     setTimeout(() => {
-      alert(isRefund ? "Dana Refund berhasil dicatat!" : "Pengeluaran operasional berhasil disimpan.");
-      closeModal();
-      hideLoading();
-      refreshData(); // Perbarui tampilan saldo dan tabel
+      refreshData(); 
+      // Pastikan refreshData() memanggil hideListLoading() di akhirnya
     }, 1500);
 
   } catch (err) {
-    hideLoading();
+    // 5. TETAP TAMPILKAN KONFIRMASI JIKA GAGAL
+    if (typeof hideListLoading === 'function') hideListLoading();
     console.error("Kesalahan koneksi:", err);
     alert("Gagal menyimpan: Terjadi kesalahan koneksi ke server.");
   }
 }
-
     
     function saveTransfer() {
         const nominal = unmask(document.getElementById('t_nom').value);
       if(!nominal) return;
-      showListLoading();
+    
       const payload = {
         type: 'TRANSFER',
         dari: document.getElementById('t_dari').value,
         ke: document.getElementById('t_ke').value,
         nominal: nominal
       };
-      showLoading();
+   
       runScript('processTransaction', payload);
     }
 
+
+async function bayarUtang(idUtang, sisaLama, namaSupplier) {
+  const content = document.getElementById('modalContent');
+  
+  // 1. Loading State
+  content.innerHTML = `
+    <div class="p-10 text-center">
+      <div class="w-10 h-10 border-4 border-slate-200 border-t-red-500 rounded-full animate-spin mx-auto mb-4"></div>
+      <p class="text-slate-500 font-medium">Mengambil rincian barang...</p>
+    </div>`;
+
+  try {
+    // DEBUG: Pastikan URL dan ID benar di Console (F12)
+    console.log("Fetching dari:", WEB_APP_URL);
+    console.log("ID Transaksi:", idUtang);
+    console.log("Supplier:", namaSupplier);
+
+    // 2. Fetch dengan penanganan timeout/error yang lebih baik
+    const response = await fetch(`${WEB_APP_URL}?action=getDetail&id=${encodeURIComponent(idUtang)}`);
+    
+    if (!response.ok) throw new Error("Respon server tidak ok");
+    
+    const detailRaw = await response.json();
+    console.log("Raw Data dari Server:", detailRaw);
+
+    let items = [];
+    try {
+      // Jika server mengirim string JSON di dalam JSON, kita parse lagi
+      items = typeof detailRaw === 'string' ? JSON.parse(detailRaw) : detailRaw;
+    } catch (e) { 
+      console.warn("Gagal parse items JSON:", e);
+      items = []; 
+    }
+
+    // 4. Susun Rincian Barang
+    let itemsHtml = `
+      <div class="mt-3 pt-3 border-t border-dotted border-slate-200 text-center py-4">
+        <p class="text-xs text-slate-400 italic">Rincian barang tidak tersedia</p>
+      </div>`;
+
+    if (Array.isArray(items) && items.length > 0) {
+      itemsHtml = `
+        <div class="mt-3 pt-3 border-t border-slate-200">
+          <p class="text-[10px] font-bold text-slate-400 uppercase mb-2">Rincian Belanja:</p>
+          <div class="max-h-32 overflow-y-auto space-y-1.5 pr-1">
+            ${items.map(it => `
+              <div class="flex justify-between text-xs items-center">
+                <span class="text-slate-600 truncate mr-4">${it.nama || 'Item'} <span class="text-[10px] text-slate-400">x${it.qty || 0}</span></span>
+                <span class="font-bold text-slate-700 whitespace-nowrap">${formatRupiah((it.harga || 0) * (it.qty || 0))}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>`;
+    }
+
+    // 5. Render Modal
+    content.innerHTML = `
+      <div class="p-2">
+        <h2 class="text-xl font-bold text-red-600 mb-2 flex items-center gap-2">
+          <i data-lucide="shield-check"></i> Konfirmasi Pelunasan
+        </h2>
+        <p class="text-sm text-slate-500 mb-4">Pastikan rincian berikut sesuai sebelum membayar.</p>
+        
+        <div class="bg-white border-2 border-red-100 rounded-2xl p-4 mb-5 shadow-sm">
+          <div class="flex justify-between items-start pb-3">
+            <div>
+              <p class="text-[10px] font-bold text-slate-400 uppercase">Supplier</p>
+              <h3 class="font-bold text-slate-800 text-lg">${namaSupplier || 'Tidak Diketahui'}</h3>
+            </div>
+            <div class="text-right text-[10px]">
+              <p class="font-bold text-slate-400 uppercase">ID Pembelian</p>
+              <p class="font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">${idUtang}</p>
+            </div>
+          </div>
+
+          ${itemsHtml}
+
+          <div class="mt-4 bg-red-50 p-3 rounded-xl flex justify-between items-center border border-red-100">
+            <span class="text-sm font-bold text-red-800">Total Pelunasan:</span>
+            <span class="text-xl font-black text-red-600">${formatRupiah(sisaLama)}</span>
+          </div>
+        </div>
+
+        <div class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">Sumber Dana</label>
+            <select id="pay_utang_metode" class="w-full p-3.5 border-2 border-slate-100 rounded-xl font-bold outline-none bg-slate-50">
+              <option value="Cash">Cash (Tunai)</option>
+              <option value="Rekening">Rekening (Transfer)</option>
+            </select>
+          </div>
+
+          <div class="flex gap-3">
+            <button onclick="renderUtangList()" class="flex-1 py-3.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">Batal</button>
+            <button onclick="eksekusiPelunasanUtang('${idUtang}', ${sisaLama})" class="flex-[2] py-3.5 bg-red-600 text-white font-bold rounded-xl shadow-lg hover:bg-red-700 transition">Ya, Bayar Lunas</button>
+          </div>
+        </div>
+      </div>
+    `;
+    lucide.createIcons();
+
+  } catch (error) {
+    console.error("CRITICAL ERROR:", error);
+    content.innerHTML = `
+      <div class="p-10 text-center">
+        <div class="text-red-500 mb-4 font-bold">Terjadi kesalahan teknis</div>
+        <p class="text-xs text-slate-400 mb-4">${error.message}</p>
+        <button onclick="renderUtangList()" class="px-6 py-2 bg-slate-100 rounded-lg text-sm font-bold">Kembali</button>
+      </div>`;
+  }
+}    
+
+
+
+function eksekusiPelunasanUtang(idUtang, nominal) {
+  const metode = document.getElementById('pay_utang_metode').value;
+  const payload = {
+    type: 'BAYAR_UTANG',
+    idUtang: idUtang,
+    nominal: nominal,
+    metode: metode
+  };
+
+  if (typeof showListLoading === 'function') showListLoading();
+  closeModal(); 
+  runScript('processTransaction', payload);
+}
+
+  
     function saveBayarPiutang() {
       const id = document.getElementById('pi_id').value;
       const nominal = unmask(document.getElementById('pi_nom').value);
       if(!id || !nominal) return;
-      showListLoading();
+ 
       const payload = {
         type: 'BAYAR_PIUTANG',
         idPiutang: id,
         nominal: nominal,
         metode: document.getElementById('pi_metode').value
       };
-      showLoading();
+     
       runScript('processTransaction', payload);
     }
 
@@ -1540,7 +1838,7 @@ async function updateSub(transactionId) {
   btn.innerHTML = '<i class="loader w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></i>';
 
   try {
-    showListLoading();// Menyiapkan data yang akan dikirim
+   // Menyiapkan data yang akan dikirim
     const payload = {
       action: "updateTransactionSub",
       transactionId: transactionId,
